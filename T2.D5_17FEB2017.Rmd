@@ -29,25 +29,24 @@ library(sp)
 
 #uploading data
 ```{r Data Upload}
-(setwd("~/Dropbox/EEMB Graduate/Research/ZosteraWastingDisease/Greenhouse_Mesocosm/Innoculation Trials/Trial_2/Analyses/Data for analyses"))
+##Mesocosm
+mesocosm.leaf <- read.csv("TRIAL2_mesocosm.csv") ##old name = d1
 
-##Leaf morphology and % cover
-d1 <- read.csv("T2_PRELIM_DATA_23JAN2017.csv")
+str(mesocosm.leaf)
 
-str(d1)
+mesocosm.leaf$no. <- as.factor(mesocosm.leaf$no.)
+mesocosm.leaf$experiment.day <- as.factor(mesocosm.leaf$experiment.day)
+mesocosm.leaf$exp.leaf.no <- as.factor(mesocosm.leaf$exp.leaf.no)
+mesocosm.leaf$current.leaf.no <- as.factor(mesocosm.leaf$current.leaf.no)
+mesocosm.leaf$mesocosm <- as.factor(mesocosm.leaf$mesocosm)
+mesocosm.leaf$vase <- as.factor(mesocosm.leaf$vase)
 
-d1$no. <- as.factor(d1$no.)
-d1$experiment.day <- as.factor(d1$experiment.day)
-d1$exp.leaf.no <- as.factor(d1$exp.leaf.no)
-d1$current.leaf.no <- as.factor(d1$current.leaf.no)
-d1$mesocosm <- as.factor(d1$mesocosm)
-d1$vase <- as.factor(d1$vase)
-
-d1$shoot.ID <- paste(d1$site, d1$no.)
-d1$shoot.ID <- as.factor(d1$shoot.ID)
+mesocosm.leaf$shoot.ID <- paste(mesocosm.leaf$site, mesocosm.leaf$no.)
+mesocosm.leaf$shoot.ID <- as.factor(mesocosm.leaf$shoot.ID)
 
 ## Shoot and rhizome biomass
-d1.shoot <- read.csv("T2_PRELIM_BIOMASS_DATA_19DEC2016.csv")
+mesocosm.shoot <- mesocosm.leaf %>%
+  
 
 ## Environmental Data
 d1.env <- read.csv("LabyInoc_T2_ZM_ENV_23JAN2017.csv")
