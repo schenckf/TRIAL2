@@ -1,0 +1,1516 @@
+---
+title: "T2.D5_LabyInoc_PrelimAnalyse"
+author: "Forest Schenck"
+date: "August 17, 2016"
+output: pdf_document
+---
+
+#Packages Library
+```{r Packages Library}
+library (dplyr)
+library(sciplot)
+
+library(lme4)
+library(lmerTest)
+
+library(multcomp)
+
+library(maps)
+library(mapdata)
+library(mapplots)
+library(mapproj)
+#library(maptools) #didn't work for shape file
+#gpclibPermit() # Not permited
+
+library(rgdal)
+library(sp)
+
+```
+
+#uploading data
+```{r Data Upload}
+(setwd("~/Dropbox/EEMB Graduate/Research/ZosteraWastingDisease/Greenhouse_Mesocosm/Innoculation Trials/Trial_2/Analyses/Data for analyses"))
+
+##Leaf morphology and % cover
+d1 <- read.csv("T2_PRELIM_DATA_23JAN2017.csv")
+
+str(d1)
+
+d1$no. <- as.factor(d1$no.)
+d1$experiment.day <- as.factor(d1$experiment.day)
+d1$exp.leaf.no <- as.factor(d1$exp.leaf.no)
+d1$current.leaf.no <- as.factor(d1$current.leaf.no)
+d1$mesocosm <- as.factor(d1$mesocosm)
+d1$vase <- as.factor(d1$vase)
+
+d1$shoot.ID <- paste(d1$site, d1$no.)
+d1$shoot.ID <- as.factor(d1$shoot.ID)
+
+## Shoot and rhizome biomass
+d1.shoot <- read.csv("T2_PRELIM_BIOMASS_DATA_19DEC2016.csv")
+
+## Environmental Data
+d1.env <- read.csv("LabyInoc_T2_ZM_ENV_23JAN2017.csv")
+dfull.env <- read.csv("DC_Temp_2016_Complete.csv")
+
+## Field Data
+d1.field <- read.csv("LabyInoc_T2_ZM_field_31JAN2017.csv")
+d1.dc.field <- read.csv("DC_2016_WD_FS.csv")
+```
+
+#Day0 Analyses
+
+##Data manipulation
+```{r Day0 Data Manipulation}
+d1.d0 <- filter(d1, experiment.day == "0")
+str(d1.d0)
+
+d1.d0 <- filter(d1.d0, mesocosm != "28")
+```
+
+##Lesion Spread Figures and Analyes
+```{r Day0 Lesion Presence}
+#Figures
+  ##Infection proportion ~ site * leaf.no
+bargraph.CI(x.factor = exp.leaf.no, group = site, response = lesion.presence, data = d1.d0, ylim = c(0,1), ylab = "Proportion of leaves with lesions", xlab = "Leaf number", legend = T)
+
+  ##Infection proportion ~ infection treatment * leaf.no
+bargraph.CI(x.factor = exp.leaf.no, group = infection, response = lesion.presence, data = d1.d0, ylim = c(0,1), ylab = "Proportion of leaves with lesions", xlab = "Leaf number", legend = T)
+  ##Infection proportion ~ infection treatment * leaf.no (only leaves 1 and 2)
+bargraph.CI(x.factor = exp.leaf.no, group = infection, response = lesion.presence, data = filter(d1.d0, exp.leaf.no == "1" | exp.leaf.no == "2"), ylim = c(0,1), ylab = "Proportion of leaves with lesions", xlab = "Leaf number", legend = T)
+            
+  ##Infected proportion ~ site * infection treatment
+bargraph.CI(x.factor = site, group = infection, response = lesion.presence, data = d1.d0, ylim = c(0,1), ylab = "Proportion of leaves with lesions", xlab = "Site", legend = T)
+  ##Infection proportion ~ site * infection (only leaves 1 and 2)
+bargraph.CI(x.factor = site, group = infection, response = lesion.presence, data = filter(d1.d0, exp.leaf.no == "1" | exp.leaf.no == "2"), ylim = c(0,1), ylab = "Proportion of leaves with lesions", xlab = "Infection Expected", legend = T)
+
+
+#Analyses
+
+  ###Something wrong here and no p-values??
+model.lesion.presence <- glmer(cbind(lesion.presence, lesion.absence) ~ infection*site*exp.leaf.no + (1|shoot.ID) + (1|mesocosm), data = filter(d1.d0, exp.leaf.no != "5" & exp.leaf.no != "4"), family = "binomial")
+anova(model.lesion.presence, test = "LR")
+```
+
+
+##Lesion Percent Cover Figures and Analyses
+```{r Day0 Lesion Percent Cover}
+#Figures
+
+  ##Lesion Percent Cover ~ Site * Leaf.no
+bargraph.CI(x.factor = exp.leaf.no, group = site, response = lesion.pc, data = filter(d1.d0, lesion.presence == "1"), ylim = c(0,10), ylab = "Lesion percent cover", xlab = "Site", legend = T)
+
+  ##Lesion percent cover ~ infection treatment * leaf.no
+bargraph.CI(x.factor = exp.leaf.no, group = infection, response = lesion.pc, data = filter(d1.d0, lesion.presence == "1"), ylim = c(0,10), ylab = "Lesion percent cover", xlab = "Infection Expected", legend = T)
+
+  ##Lesion percent cover ~ site * infection treatment
+bargraph.CI(x.factor = site, group = infection, response = lesion.pc, data = filter(d1.d0, lesion.presence == "1" & exp.leaf.no != "4" & exp.leaf.no != "5"), ylim = c(0,10), ylab = "Lesion percent cover", xlab = "Site", legend = T)
+
+  ##Lesion percent cover ~ site * infection treatment (including leaves without lesions)
+bargraph.CI(x.factor = site, group = infection, response = lesion.pc, data = filter(d1.d0, exp.leaf.no != "4" & exp.leaf.no != "5"), ylim = c(0,10), ylab = "Lesion percent cover", xlab = "Site", legend = T)
+
+  ##Lesion percent cover ~ site
+bargraph.CI(x.factor = site, response = lesion.pc, data = filter(d1.d0, lesion.presence == "1"), ylim = c(0,100), ylab = "Lesion percent cover", xlab = "Site", legend = T)
+
+#Analyses
+model.lesion.pc.d0 <- lmer(lesion.pc ~ infection*site*exp.leaf.no + (1|shoot.ID) + (1|mesocosm), data = filter(d1.d0, lesion.presence == "1"))
+anova(model.lesion.pc.d0) #main effect of site, interaction of site:leaf number, but not biologically significant! Also hard to deal with contrasts when sites have diff. amt of leaves with lesions
+
+# Including plants WITHOUT lesions (aka including 0% values) and leaves 4 and 5 because of lack of replication at this high leaf number 
+model.lesion.pc.d0.all.plants <- lmer(lesion.pc ~ infection*site*exp.leaf.no + (1|shoot.ID) + (1|mesocosm), data = filter(d1.d0, exp.leaf.no != "4" & exp.leaf.no != "5"))
+anova(model.lesion.pc.d0.all.plants) #no effects significant and NO ERRORS in model.
+```
+
+##Length Figures and Analyses
+```{r Day0 Leaf Length}
+#Figures
+
+  ##Length ~ infection * site
+bargraph.CI(x.factor = site, group = infection, response = length.cm, data = filter(d1.d0, exp.leaf.no != "5"), ylim = c(0,30), ylab = "Leaf length (cm)", xlab = "Site", legend = T)
+
+  ##Length ~ infection * leaf number (*only DC)
+bargraph.CI(x.factor = exp.leaf.no, group = infection, response = length.cm, data = filter(d1.d0, site =="DC" & exp.leaf.no != "5"), ylim = c(0,30), ylab = "Leaf length (cm)", xlab = "Leaf number", legend = T)
+
+  #Length ~ site * exp.leaf.no (Excluding leaves 4 and 5)
+bargraph.CI(x.factor = exp.leaf.no, group = site, response = length.cm, data = filter(d1.d0, exp.leaf.no != "5" & exp.leaf.no != "4"), ylim = c(0,30), ylab = "Leaf length (cm)", xlab = "Leaf number", legend = T)
+
+#Analyses
+  ##Including all leaves in analysis
+model.length.cm.d0 <- lmer(length.cm ~ infection*site*exp.leaf.no + (1|shoot.ID) + (1|mesocosm), data = d1.d0)
+anova(model.length.cm.d0) ##Not all sites have multiple plants with 4th or 5th leaf
+
+  ###Checking to see if results change if exclude leaves 4 and 5 from analyses
+model.length.cm.d0.L123 <- lmer(length.cm ~ site*infection*exp.leaf.no + (1|shoot.ID) + (1|mesocosm), data = filter(d1.d0, exp.leaf.no != "4" & exp.leaf.no != "5"))
+anova(model.length.cm.d0.L123) ##not change in results; error message goes away :)
+```
+
+
+#Day5 Analyses
+
+##Data manipulation
+```{r Day5 Data Manipulation}
+d1.d5 <- filter(d1, experiment.day == "5" & mesocosm != "28")
+str(d1.d5)
+
+#Leaf Growth
+d0 <- subset(d1.d0, select = c(researcher:exp.leaf.no, lesion.pc, length.cm, no.leaves, lesion.presence, lesion.absence))
+
+d1.d5 <- merge(d1.d5, d0, all.x = TRUE, by = c("vase", "exp.leaf.no"))
+d1.d5 <- subset(d1.d5, select = c(vase:shoot.ID, lesion.pc.y, length.cm.y, no.leaves.y, lesion.presence.y, lesion.absence.y))
+str(d1.d5)
+
+d1.d5$delta.sheath.length[is.na(d1.d5$delta.sheath.length)] <- 0
+d1.d5$std.length.cm <- d1.d5$length.cm.x - d1.d5$delta.sheath.length
+
+d1.d5$delta.length.cm <- d1.d5$std.length.cm - d1.d5$length.cm.y
+
+##Lesion Percent Cover and Leaf Growth Effect Sizes
+d1.d5.ef <- d1.d5 %>%
+  filter(infection.x == "N") %>%
+  filter(exp.leaf.no != "4" & exp.leaf.no != "5") %>%
+  group_by(site.x, exp.leaf.no) %>%
+  summarize(control.lpc5 = mean(lesion.pc.x, na.rm = T), control.growth5 = mean(delta.length.cm, na.rm = T))
+
+d5.ef <- merge(d1.d5, d1.d5.ef, by = c("site.x", "exp.leaf.no"), all.x = T)
+
+d5.ef <- d5.ef %>%
+  filter(infection.x == "Y") %>%
+  filter(exp.leaf.no != "4" & exp.leaf.no != "5") %>%
+  subset(select = c(site.x, exp.leaf.no, vase, mesocosm.x, lesion.pc.x, delta.length.cm, control.lpc5, control.growth5))
+
+d5.ef$lpc.ef <- (d5.ef$lesion.pc.x - d5.ef$control.lpc5)/d5.ef$control.lpc5
+d5.ef$growth.ef <- (d5.ef$delta.length.cm - d5.ef$control.growth5)/d5.ef$control.growth5
+
+#data for growth effect size figures
+d5.ef.fig <- d5.ef %>%
+  filter(exp.leaf.no != "0") %>%
+  group_by(exp.leaf.no) %>%
+  summarize(growth.ef.mean = mean(growth.ef, na.rm = T), growth.ef.95ci = 1.96*se(growth.ef))
+
+#Leaf number
+d1.d5.leaves = d1.d5 %>%
+  filter(no.leaves.y != "NA") %>%
+  group_by(mesocosm.x, infection.x, site.x, shoot.ID) %>%
+  summarize(no.leaves.x = mean(no.leaves.x), no.leaves.y = mean(no.leaves.y), no.leaves.new = mean(no.leaves.new), no.leaves.lost = mean(no.leaves.lost))
+
+d1.d5.leaves$delta.no.leaves <- d1.d5.leaves$no.leaves.x - d1.d5.leaves$no.leaves.y
+
+##Leaf number effect sizes
+d1.d5.leaves.ef <- d1.d5.leaves %>%
+  filter(infection.x == "N") %>%
+  group_by(infection.x) %>%
+  summarize(control.dnl = mean(delta.no.leaves, na.rm = T), control.new = mean(no.leaves.new, na.rm = T), control.lost = mean(no.leaves.lost, na.rm =T))
+
+#d5.leaves.ef <- merge(d1.d5.leaves, d1.d5.leaves.ef, by = c("site.x"), all.x = T)
+
+#d5.leaves.ef <- d5.leaves.ef %>%
+  #filter(infection.x == "Y") %>%
+  #subset(select = c(site.x, mesocosm.x, no.leaves.new:control.lost))
+
+d5.leaves.ef <- merge(filter(d1.d5.leaves, infection.x == "N"), d1.d5.leaves.ef, by = c("infection.x"), all.x = T)
+d5.leaves.ef <- subset(d5.leaves.ef, select = c("site.x", "control.dnl", "control.new", "control.lost"))
+
+d5.leaves.ef <- merge(d1.d5.leaves, d5.leaves.ef, by = "site.x", all.x =T)
+d5.leaves.ef <- d5.leaves.ef %>%
+  filter(infection.x == "Y") %>%
+  group_by(infection.x, shoot.ID) %>%
+  summarize(delta.no.leaves = mean(delta.no.leaves), no.leaves.new = mean(no.leaves.new), no.leaves.lost = mean(no.leaves.lost), control.dnl = mean(control.dnl), control.new = mean(control.new), control.lost = mean(control.lost))
+
+d5.leaves.ef$dnl.ef <- (d5.leaves.ef$delta.no.leaves - d5.leaves.ef$control.dnl)/d5.leaves.ef$control.dnl
+d5.leaves.ef$new.ef <- (d5.leaves.ef$no.leaves.new - d5.leaves.ef$control.new)/d5.leaves.ef$control.new
+d5.leaves.ef$lost.ef <- (d5.leaves.ef$no.leaves.lost - d5.leaves.ef$control.lost)/d5.leaves.ef$control.lost
+###how to deal with leaves lost being 0 for controls --> don't analyze by site
+
+d5.leaves.ef.fig <- d5.leaves.ef %>%
+  group_by(infection.x) %>%
+  summarize(dnl.ef.mean = mean(dnl.ef), dnl.ef.95ci = 1.96*se(dnl.ef), new.ef.mean = mean(new.ef), new.ef.95ci = 1.96*se(new.ef), lost.ef.mean = mean(lost.ef), lost.ef.95ci = 1.96*se(lost.ef))
+
+d5.leaves.ef.fig$infection.x <- c("")
+d5.leaves.ef.fig$infection.x <- as.factor(d5.leaves.ef.fig$infection.x)
+str(d5.leaves.ef.fig)
+```
+
+##Lesion Spread Figures and Analyes
+```{r Day5 Lesion Presence}
+#Figures
+
+ ##Infection proportion ~ infection treatment * leaf.no
+bargraph.CI(x.factor = exp.leaf.no, group = infection.x, response = lesion.presence.x, data = d1.d5, ylim = c(0,2), ylab = "Proportion of leaves with lesions", xlab = "Leaf number", legend = T)
+
+  ##Infected proportion ~ site * infection treatment
+bargraph.CI(x.factor = site.x, group = infection.x, response = lesion.presence.x, data = d1.d5, ylim = c(0,2), ylab = "Proportion of leaves with lesions", xlab = "Site", legend = T)
+
+  ##Infection proportion ~ site * leaf.no (*Only infected)
+bargraph.CI(x.factor = exp.leaf.no, group = site.x, response = lesion.presence.x, data = filter(d1.d5, infection.x == "Y"), ylim = c(0,2), ylab = "Proportion of leaves with lesions", xlab = "Site", legend = T)
+
+#Analyses (Get glm code from Torrie 1/12/17)
+
+
+```
+
+##Lesion Percent Cover Figures and Analyses
+```{r Day5 Lesion Percent Cover}
+#Figures
+
+  ## Lesion percent cover effect size ~ leaf.no (grouped by site)
+bargraph.CI(x.factor = exp.leaf.no, group = site.x, response = lpc.ef, data = d5.ef, ylim = c(0,100), ylab = "Effect of disease on lesion percent cover", xlab = "Leaf number", legend = T)
+
+  ##Lesion percent cover ~ infection treatment * leaf.no
+#bargraph.CI(x.factor = exp.leaf.no, group = infection.x, response = lesion.pc.x, data = filter(d1.d5, lesion.presence.x == "1"), ylim = c(0,100), ylab = "Lesion percent cover", xlab = "Leaf number", legend = T)
+    ###Lesion percent cover ~ infection treatment * leaf.no (*all leaves, excluding leaves 4 & 5)
+par(mfrow = c(2,2))
+bargraph.CI(x.factor = exp.leaf.no, group = infection.x, response = lesion.pc.x, data = filter(d1.d5, exp.leaf.no != "4" & exp.leaf.no != "5" & site.x == "DC"), ylim = c(0,100), ylab = "Lesion percent cover", xlab = "Leaf number", legend = T) ##DC plot
+bargraph.CI(x.factor = exp.leaf.no, group = infection.x, response = lesion.pc.x, data = filter(d1.d5, exp.leaf.no != "4" & exp.leaf.no != "5" & site.x == "LP"), ylim = c(0,100), ylab = "Lesion percent cover", xlab = "Leaf number", legend = T) ##LP plot
+bargraph.CI(x.factor = exp.leaf.no, group = infection.x, response = lesion.pc.x, data = filter(d1.d5, exp.leaf.no != "4" & exp.leaf.no != "5" & site.x == "NB"), ylim = c(0,100), ylab = "Lesion percent cover", xlab = "Leaf number", legend = T) ##NB plot
+bargraph.CI(x.factor = exp.leaf.no, group = infection.x, response = lesion.pc.x, data = filter(d1.d5, exp.leaf.no != "4" & exp.leaf.no != "5" & site.x == "WB"), ylim = c(0,100), ylab = "Lesion percent cover", xlab = "Leaf number", legend = T) ##WB plot
+
+  ##Lesion percent cover ~ infection treatment * leaf.no (*all leaves, excluding leaves 4 and 5)
+#bargraph.CI(x.factor = exp.leaf.no, group = infection.x, response = lesion.pc.x, data = filter(d1.d5, exp.leaf.no != "4" & exp.leaf.no != "5"), ylim = c(0,100), ylab = "Lesion percent cover", xlab = "Leaf number", legend = T)
+
+  ##Lesion percent cover ~ site * infection treatment
+#bargraph.CI(x.factor = site.x, group = infection.x, response = lesion.pc.x, data = filter(d1.d5, lesion.presence.x == "1"), ylim = c(0,100), ylab = "Lesion percent cover", xlab = "Site", legend = T)
+
+  ##Lesion Percent Cover ~ Site * Leaf.no (*Only infected)
+par(mfrow = c(1,1))
+bargraph.CI(x.factor =  exp.leaf.no, group =site.x, response = lesion.pc.x, data = filter(d1.d5, infection.x == "Y" & exp.leaf.no != "4" & exp.leaf.no != "5"), ylim = c(0,100), ylab = "Lesion percent cover", xlab = "Leaf number", legend = T)
+
+  ##Lesion Percent Cover ~ Site * Leaf.no (*Only control)
+par(mfrow = c(1,1))
+bargraph.CI(x.factor =  exp.leaf.no, group =site.x, response = lesion.pc.x, data = filter(d1.d5, infection.x == "N" & exp.leaf.no != "4" & exp.leaf.no != "5"), ylim = c(0,5), ylab = "Lesion percent cover", xlab = "Leaf number", legend = T)
+
+  ##Lesion Percent Cover ~ Site * Leaf.no (*Only infected and all leaves)
+#bargraph.CI(x.factor = exp.leaf.no, group = site.x, response = lesion.pc.x, data = filter(d1.d5, infection.x == "Y"), ylim = c(0,100), ylab = "Lesion percent cover", xlab = "Leaf number", legend = T)
+
+#Analyses
+#model.lesion.pc.d5 <- lmer(lesion.pc.x ~ infection.x*site.x*exp.leaf.no + (1|shoot.ID) + (1|mesocosm.x) + lesion.pc.y, data = filter(d1.d5, lesion.presence.x == "1"))
+#anova(model.lesion.pc.d5)
+
+#Correct FULL model (1/23/17)
+model.lesion.pc.d5.all <- lmer(lesion.pc.x ~ infection.x*site.x*exp.leaf.no + (1|shoot.ID) + (1|mesocosm.x), data = filter(d1.d5, exp.leaf.no != "4" & exp.leaf.no != "5")) ##Including leaves with 0% infection, exclude leaves 4 and 5 because of lack of replication across sites, lesion.pc.y not significant so removed from model
+anova(model.lesion.pc.d5.all)
+
+model.lesion.pc.disease.d5 <- lmer(lesion.pc.x ~ site.x*exp.leaf.no + (1|shoot.ID) + (1|mesocosm.x) + lesion.pc.y, data = filter(d1.d5, infection.x == "Y" & exp.leaf.no != "4" & exp.leaf.no != "5")) #Looking at relationship between site and leaf number within infected plants
+anova(model.lesion.pc.disease.d5)
+
+model.lesion.pc.control.d5 <- lmer(lesion.pc.x ~ site.x*exp.leaf.no + (1|shoot.ID) + (1|mesocosm.x) + lesion.pc.y, data = filter(d1.d5, infection.x == "N" & exp.leaf.no != "4" & exp.leaf.no != "5")) #Looking at relationship between site and leaf number within control plants
+anova(model.lesion.pc.control.d5)
+
+  ##Just leaf 2 of infected plants that are showing signs of lesions (aka all plants)
+#model.lesion.pc.d5.leaf2 <- lmer(lesion.pc.x ~ site.x + (1|mesocosm.x) + lesion.pc.y, data = filter(d1.d5, lesion.presence.x == "1" & exp.leaf.no == "2" & infection.x == "Y"))
+#anova(model.lesion.pc.d5.leaf2)
+```
+
+##Leaf Growth Figures and Analyses
+```{r Day5 Leaf Growth}
+ ## Growth effect size ~ leaf.no (grouped by site)
+fig.growth <- barplot(c(0,0), names = d5.ef.fig$exp.leaf.no[1:2] , ylim = c(-1, 1),
+                  ylab = "Effect size of disease on leaf growth",
+                  xlab = "Leaf number")
+points(x = fig.growth, d5.ef.fig$growth.ef.mean[1:2])
+arrows(y0 = d5.ef.fig$growth.ef.mean[1:2] - d5.ef.fig$growth.ef.95ci[1:2], y1 = d5.ef.fig$growth.ef.mean[1:2] + d5.ef.fig$growth.ef.95ci[1:2], x0 = fig.growth, x1 =fig.growth, angle = 90, code = 3, #95% CI
+length = 0.1)
+
+#bargraph.CI(x.factor = exp.leaf.no, group = site.x, response = growth.ef, data = filter(d5.ef, exp.leaf.no != "3"), ylim = c(-1,1), ylab = "Effect of disease on leaf growth", xlab = "Leaf number", legend = T)
+
+  ##Growth ~ infection treatment * leaf.no (Excluding leaves 4 and 5)
+bargraph.CI(x.factor = exp.leaf.no, group = infection.x, response = delta.length.cm, data = filter(d1.d5, exp.leaf.no != "4" & exp.leaf.no != "5"), ylim = c(0,7), ylab = "Leaf growth (cm)", xlab = "Leaf number", legend = T)
+
+  ##Growth ~ site * leaf.no 
+bargraph.CI(x.factor = exp.leaf.no, group = site.x, response = delta.length.cm, data = filter(d1.d5, exp.leaf.no != "4" & exp.leaf.no != "5"), ylim = c(0,7), ylab = "Leaf growth (cm)", xlab = "Leaf number", legend = T)
+
+#Analyses
+model.growth.std.d5 <- lmer(std.length.cm ~ infection.x*site.x*exp.leaf.no + (1|shoot.ID) + (1|mesocosm.x) + length.cm.y, data = filter(d1.d5, exp.leaf.no != "4" & exp.leaf.no != "5")) #adjusting for delta sheath length (*Excluding leaves 4 and 5 because not enough reps for adequate contrasts)
+anova(model.growth.std.d5) #Significant interactions: site*leaf number and Infection*leaf number
+```
+
+##Change in leaf number Figures and Analyses
+```{r Day5 Leaf Number}
+#Figures
+
+##Change in leaves (effect size)
+#bargraph.CI(x.factor = infection.x, response = dnl.ef, data = d5.leaves.ef, ylim = c(-5,5), ylab = "Effect of disease on change in leaf number")
+
+fig.dnl <- barplot(0, names =d5.leaves.ef.fig$infection.x , ylim = c(-5, 5),
+                  ylab = "Effect size of disease on net leaf change",
+                  xlab = "")
+points(x = fig.dnl[1], d5.leaves.ef.fig$dnl.ef.mean[1])
+arrows(y0 = d5.leaves.ef.fig$dnl.ef.mean - d5.leaves.ef.fig$dnl.ef.95ci, y1 = d5.leaves.ef.fig$dnl.ef.mean + d5.leaves.ef.fig$dnl.ef.95ci, x0 = fig.dnl, x1 =fig.dnl, angle = 90, code = 3, #95% CI
+length = 0.1)
+
+## number of leaves lost (effect size)
+fig.lost <- barplot(0, names =d5.leaves.ef.fig$infection.x , ylim = c(-35, 35),
+                  ylab = "Effect size of disease on the number of leaves lost",
+                  xlab = "")
+points(x = fig.lost[1], d5.leaves.ef.fig$lost.ef.mean[1])
+arrows(y0 = d5.leaves.ef.fig$lost.ef.mean - d5.leaves.ef.fig$lost.ef.95ci, y1 = d5.leaves.ef.fig$lost.ef.mean + d5.leaves.ef.fig$lost.ef.95ci, x0 = fig.dnl, x1 =fig.dnl, angle = 90, code = 3, #95% CI
+length = 0.1)
+
+#bargraph.CI(x.factor = infection.x, response = lost.ef, data = d5.leaves.ef, ylab = "Effect of disease on leaves lost")
+
+## number of leaves new (effect size)
+#bargraph.CI(x.factor = infection.x, response = new.ef, data = d5.leaves.ef, ylab = "Effect of disease on leaves produced")
+
+fig.new <- barplot(0, names =d5.leaves.ef.fig$infection.x , ylim = c(-2, 2),
+                  ylab = "Effect size of disease on the number of new leaves",
+                  xlab = "")
+points(x = fig.new[1], d5.leaves.ef.fig$new.ef.mean[1])
+arrows(y0 = d5.leaves.ef.fig$new.ef.mean - d5.leaves.ef.fig$new.ef.95ci, y1 = d5.leaves.ef.fig$new.ef.mean + d5.leaves.ef.fig$new.ef.95ci, x0 = fig.dnl, x1 =fig.dnl, angle = 90, code = 3, #95% CI
+length = 0.1)
+
+  ##Change in leaves ~ infection
+bargraph.CI(x.factor = infection.x, response = delta.no.leaves, data = d1.d5.leaves, ylim = c(-1,1), ylab = "Change in the number of leaves per shoot", xlab = "Infection")
+
+  ##Number of leaves lost ~ infection
+  bargraph.CI(x.factor = infection.x, response = no.leaves.lost, data = d1.d5.leaves, ylim = c(0, 1), ylab = "Number of leaves lost per shoot", xlab = "Site", legend = T)
+  
+  
+#Analyses
+model.no.leaves.d5 <- lmer(no.leaves.x ~ infection.x*site.x + (1|mesocosm.x) + no.leaves.y, data = d1.d5.leaves)
+anova(model.no.leaves.d5) #Significant effect of infection
+
+model.new.leaves.d5 <- lmer(no.leaves.new ~ infection.x*site.x + (1|mesocosm.x) + no.leaves.y, data = d1.d5.leaves)
+anova(model.new.leaves.d5) # No significant effects
+
+model.leaves.lost.d5 <- lmer(no.leaves.lost ~ infection.x*site.x + (1|mesocosm.x) + no.leaves.y, data = d1.d5.leaves)
+anova(model.leaves.lost.d5) #Significant main effect of infection, marginal effect of site (P = 0.056)
+```
+
+#Day28 Analyses
+##Data manipulation
+```{r Day28 Data Manipulation}
+d1.d28 <- filter(d1, experiment.day == "28" & mesocosm != "28")
+str(d1.d28)
+
+##CHANGE IN LEAF NUMBER
+d1.d28.leaf.no <- merge(d1.d28, d0, all.x = TRUE, by = c("vase", "exp.leaf.no"))
+d1.d28.leaf.no <- subset(d1.d28.leaf.no, select = c(vase:shoot.ID, lesion.pc.y, length.cm.y, no.leaves.y, lesion.presence.y))
+str(d1.d28.leaf.no)
+d1.d28.leaves = d1.d28.leaf.no %>%
+  filter(no.leaves.y != "NA") %>%
+  group_by(mesocosm.x, infection.x, site.x, shoot.ID) %>%
+  summarize(no.leaves.x = mean(no.leaves.x), no.leaves.y = mean(no.leaves.y), no.leaves.new = mean(no.leaves.new), no.leaves.lost = mean(no.leaves.lost))
+
+d1.d28.leaves$delta.no.leaves <- d1.d28.leaves$no.leaves.x - d1.d28.leaves$no.leaves.y
+
+## LEAF GROWTH
+d5 <- subset(d1.d5, select = c(vase:exp.leaf.no, lesion.pc.x, delta.sheath.length, std.length.cm, lesion.presence.x, lesion.absence.x))
+
+d1.d28 <- merge(d1.d28, d0, all.x = TRUE, by = c("vase", "exp.leaf.no"))
+d1.d28 <- subset(d1.d28, select = c(vase:shoot.ID, lesion.pc.y:lesion.absence.y))
+
+colnames(d1.d28)[13:15] <- c("length.cm.d28", "area.cm.d28", "lesion.area.d28")
+colnames(d1.d28)[17:20] <- c("lesion.pc.d28", "lesion.presence.d28", "lesion.absence.d28", "no.leaves.d28")
+colnames(d1.d28)[25] <- "delta.sheath.length.d28"
+colnames(d1.d28)[29:33] <- c("lesion.pc.d0", "length.cm.d0", "no.leaves.d0", "lesion.presence.d0", "lesion.absence.d0")
+
+d1.d28 <- merge(d1.d28, d5, all.x = TRUE, by = c("vase", "exp.leaf.no"))
+
+colnames(d1.d28)[34:38] <- c("lesion.pc.d5", "delta.sheath.length.d5", "std.length.cm.d5", "lesion.presence.d5", "lesion.abseence.d5")
+
+d1.d28$delta.sheath.length.d28[is.na(d1.d28$delta.sheath.length.d28)] <-0
+d1.d28$delta.sheath.length.d5[is.na(d1.d28$delta.sheath.length.d5)] <- 0
+
+  ###TOTAL GROWTH
+d1.d28$delta.sheath.length.total <- d1.d28$delta.sheath.length.d5 + d1.d28$delta.sheath.length.d28
+d1.d28$std.length.cm.total <- d1.d28$length.cm.d28 - d1.d28$delta.sheath.length.total
+
+d1.d28.leaf.growth.total <- subset(d1.d28, select = c(vase:current.leaf.no, shoot.ID, std.length.cm.total, length.cm.d0))
+d1.d28.leaf.growth.total <- filter(d1.d28.leaf.growth.total, std.length.cm.total != "NA" & length.cm.d0 != "NA")
+
+d1.d28.leaf.growth.total$delta.length.cm <- d1.d28.leaf.growth.total$std.length.cm.total - d1.d28.leaf.growth.total$length.cm.d0
+
+
+    ####Leaf growth total effect size leaf 1
+d1.d28.L1.total.ef <- filter(d1.d28.leaf.growth.total, exp.leaf.no == "1")
+
+d1.d28.L1.total.ef.mean <- aggregate(delta.length.cm ~ infection.x*site.x, FUN = mean, data = d1.d28.L1.total.ef)
+
+d1.d28.L1.total.ef <- filter(d1.d28.L1.total.ef, infection.x == "Y")
+
+d1.d28.L1.total.ef.DC <- filter(d1.d28.L1.total.ef, site.x == "DC")
+d1.d28.L1.total.ef.DC$growth.ef <- (d1.d28.L1.total.ef.DC$delta.length.cm - 11.885909)/11.885909
+
+d1.d28.L1.total.ef.LP <- filter(d1.d28.L1.total.ef, site.x == "LP")
+d1.d28.L1.total.ef.LP$growth.ef <- (d1.d28.L1.total.ef.LP$delta.length.cm - 9.808545)/9.808545
+
+d1.d28.L1.total.ef.NB <- filter(d1.d28.L1.total.ef, site.x == "NB")
+d1.d28.L1.total.ef.NB$growth.ef <- (d1.d28.L1.total.ef.NB$delta.length.cm - 10.861545)/10.861545
+
+d1.d28.L1.total.ef.WB <- filter(d1.d28.L1.total.ef, site.x == "WB")
+d1.d28.L1.total.ef.WB$growth.ef <- (d1.d28.L1.total.ef.WB$delta.length.cm - 7.181091)/7.181091
+
+d1.d28.L1.total.ef <- rbind(d1.d28.L1.total.ef.DC, d1.d28.L1.total.ef.LP, d1.d28.L1.total.ef.NB, d1.d28.L1.total.ef.WB)
+
+d1.d28.L1.total.ef.fig <- d1.d28.L1.total.ef %>%
+  group_by(site.x) %>%
+  summarize(mean.ef = mean(growth.ef), CI.ef = 1.96*se(growth.ef))
+
+  ###GROWTH SINCE DAY 5
+d1.d28$std.length.cm.d5d28 <- d1.d28$length.cm.d28 - d1.d28$delta.sheath.length.d28
+
+d1.d28.leaf.growth.d5d28 <- subset(d1.d28, select = c(vase:current.leaf.no, shoot.ID, std.length.cm.d5d28, std.length.cm.d5))
+d1.d28.leaf.growth.d5d28 <- filter(d1.d28.leaf.growth.d5d28, std.length.cm.d5d28 != "NA" & std.length.cm.d5 != "NA")
+
+d1.d28.leaf.growth.d5d28$delta.length.cm <- d1.d28.leaf.growth.d5d28$std.length.cm.d5d28 - d1.d28.leaf.growth.d5d28$std.length.cm.d5
+
+#Total growth effect size day28
+d1.d28.ef <- d1.d28.leaf.growth.total %>%
+  filter(infection.x == "N") %>%
+  filter(exp.leaf.no != "4" & exp.leaf.no != "5") %>%
+  group_by(exp.leaf.no) %>%
+  summarize(control.growth28 = mean(delta.length.cm, na.rm = T))
+
+d28.ef <- merge(d1.d28.leaf.growth.total, d1.d28.ef, by = c("exp.leaf.no"), all.x = T)
+
+d28.ef <- d28.ef %>%
+  filter(infection.x == "Y") %>%
+  filter(exp.leaf.no != "4" & exp.leaf.no != "5") %>%
+  subset(select = c(exp.leaf.no, mesocosm.x, delta.length.cm, control.growth28))
+
+d28.ef$growth.ef <- (d28.ef$delta.length.cm - d28.ef$control.growth28)/d28.ef$control.growth28
+
+#growth fig day 28
+d28.ef.fig <- d28.ef %>%
+  filter(exp.leaf.no != "0") %>%
+  group_by(exp.leaf.no) %>%
+  summarize(growth.ef.mean = mean(growth.ef, na.rm = T), growth.ef.95ci = 1.96*se(growth.ef))
+
+#growth since day 5 effect size
+d5.d28.ef <- d1.d28.leaf.growth.d5d28 %>%
+  filter(infection.x == "N") %>%
+  filter(exp.leaf.no != "4" & exp.leaf.no != "5") %>%
+  group_by(exp.leaf.no) %>%
+  summarize(control.growth528 = mean(delta.length.cm, na.rm = T))
+
+d528.ef <- merge(d1.d28.leaf.growth.d5d28, d5.d28.ef, by = c("exp.leaf.no"), all.x = T)
+
+d528.ef <- d528.ef %>%
+  filter(infection.x == "Y") %>%
+  filter(exp.leaf.no != "4" & exp.leaf.no != "5") %>%
+  subset(select = c(exp.leaf.no, mesocosm.x, delta.length.cm, control.growth528))
+
+d528.ef$growth.ef <- (d528.ef$delta.length.cm - d528.ef$control.growth528)/d528.ef$control.growth528
+
+#growth since day 5 fig day 28
+d528.ef.fig <- d528.ef %>%
+  group_by(exp.leaf.no) %>%
+  summarize(growth.ef.mean = mean(growth.ef, na.rm = T), growth.ef.95ci = 1.96*se(growth.ef))
+
+#growth figure combined day0-28 and day5-28
+
+#d28.ef.1 <-filter(d28.ef, exp.leaf.no == "1")
+#d28.ef.1$control.growth28 <- d28.ef.1$control.growth28 + 5.493182
+#d28.ef.1$delta.length.cm <- d28.ef.1$delta.length.cm +5.493182
+#d28.ef.1$growth.ef <- (d28.ef.1$delta.length.cm - d28.ef.1$control.growth28)/d28.ef.1$control.growth28
+
+#d28.ef.2 <-filter(d28.ef, exp.leaf.no == "2")
+#d28.ef.2$control.growth28 <- d28.ef.2$control.growth28 +  12.57829
+#d28.ef.2$delta.length.cm <- d28.ef.2$delta.length.cm +  12.57829
+#d28.ef.2$growth.ef <- (d28.ef.2$delta.length.cm - d28.ef.2$control.growth28)/d28.ef.2$control.growth28
+
+#d28.ef.3 <-filter(d28.ef, exp.leaf.no == "3")
+#d28.ef.3$control.growth28 <- d28.ef.3$control.growth28 + 14.45502
+#d28.ef.3$delta.length.cm <- d28.ef.3$delta.length.cm + 14.45502
+#d28.ef.3$growth.ef <- (d28.ef.3$delta.length.cm - d28.ef.3$control.growth28)/d28.ef.3$control.growth28
+
+#d28.ef <- rbind(d28.ef.1, d28.ef.2, d28.ef.3)
+
+#growth fig day 28
+#d28.ef.fig <- d28.ef %>%
+ # filter(exp.leaf.no != "0") %>%
+  #group_by(exp.leaf.no) %>%
+  #summarize(growth.ef.mean = mean(growth.ef, na.rm = T), growth.ef.95ci = 1.96*se(growth.ef))
+
+d28.ef.fig <- rbind(d528.ef.fig[1,], d28.ef.fig)
+
+
+####################################################
+
+##BIOMASS AND RHIZOME LENGTH
+  ###biomass (d.28)
+d1.shoot$b.t.d28 <- d1.shoot$a.g.d28 + d1.shoot$b.g.d28
+
+d1.shoot <- filter(d1.shoot, mesocosm != "28")
+
+d1.shoot$rhizome.growth <- d1.shoot$rhizome.length.cm.D28 - d1.shoot$rhizome.length.cm.D0
+
+  ###Total Biomass effect size
+      #### (mean control[split by site] - individual infected)/ mean control [split by site]
+d1.shoot.mean.tb <- aggregate(b.t.d28 ~ site + infection, FUN = mean, data = d1.shoot)
+
+d1.shoot.ef.tb.DC <- subset(d1.shoot, site == "DC")
+d1.shoot.ef.tb.LP <- subset(d1.shoot, site == "LP")
+d1.shoot.ef.tb.NB <- subset(d1.shoot, site == "NB")
+d1.shoot.ef.tb.WB <- subset(d1.shoot, site == "WB")
+
+d1.shoot.ef.tb.DC$tb.ef <- (0.5315455 - d1.shoot.ef.tb.DC$b.t.d28)/0.5315455
+d1.shoot.ef.tb.LP$tb.ef <- (0.3527273 - d1.shoot.ef.tb.LP$b.t.d28)/0.3527273
+d1.shoot.ef.tb.NB$tb.ef <- (0.4861818- d1.shoot.ef.tb.NB$b.t.d28)/0.4861818
+d1.shoot.ef.tb.WB$tb.ef <- (0.6234545 - d1.shoot.ef.tb.WB$b.t.d28)/0.6234545
+
+d1.shoot.ef.tb <- rbind(d1.shoot.ef.tb.DC, d1.shoot.ef.tb.LP, d1.shoot.ef.tb.NB, d1.shoot.ef.tb.WB)
+
+d1.shoot.ef.tb <-subset(d1.shoot.ef.tb, infection == "Y")
+
+  ###Rhizome length effect size
+    #### (mean control[split by site] - individual infected)/ mean control [split by site]
+d1.shoot.mean.si <- aggregate(rhizome.growth ~ site + infection, FUN = mean, data = d1.shoot)
+
+d1.shoot.ef.rhiz.DC <- subset(d1.shoot, site == "DC")
+d1.shoot.ef.rhiz.LP <- subset(d1.shoot, site == "LP")
+d1.shoot.ef.rhiz.NB <- subset(d1.shoot, site == "NB")
+d1.shoot.ef.rhiz.WB <- subset(d1.shoot, site == "WB")
+
+d1.shoot.ef.rhiz.DC$growth.ef <- (1.863636 - d1.shoot.ef.rhiz.DC$rhizome.growth)/1.863636
+d1.shoot.ef.rhiz.LP$growth.ef <- (3.363636 - d1.shoot.ef.rhiz.LP$rhizome.growth)/3.363636
+d1.shoot.ef.rhiz.NB$growth.ef <- (4.454545 - d1.shoot.ef.rhiz.NB$rhizome.growth)/4.454545
+d1.shoot.ef.rhiz.WB$growth.ef <- (2.454545 - d1.shoot.ef.rhiz.WB$rhizome.growth)/2.454545
+
+d1.shoot.ef.rhiz <- rbind(d1.shoot.ef.rhiz.DC, d1.shoot.ef.rhiz.LP, d1.shoot.ef.rhiz.NB, d1.shoot.ef.rhiz.WB)
+
+d1.shoot.ef.rhiz <-subset(d1.shoot.ef.rhiz, infection == "Y")
+```
+
+##Lesion Spread Figures and Analyes
+```{r Day28 Lesion Presence}
+#Figures (*Only infected)
+ ##Infection proportion ~ leaf.no
+bargraph.CI(x.factor = exp.leaf.no, response = lesion.presence, data = d1.d28.disease, ylim = c(0,1.1), ylab = "Proportion of leaves with lesions", xlab = "exp.leaf.no")
+
+  ##Infected proportion ~ site * leaf.no
+bargraph.CI(x.factor = site, group = exp.leaf.no, response = lesion.presence, data = d1.d28.disease, ylim = c(0,5), ylab = "Proportion of leaves with lesions", xlab = "Site", legend = T)
+
+#Analyses (ASK TORRIE FOR GLM)
+```
+
+##Lesion Percent Cover Figures and Analyses
+```{r Day28 Lesion Percent Cover}
+#Figures
+
+  ##Lesion Percent Cover ~ Infection * Leaf.no,
+bargraph.CI(x.factor = exp.leaf.no, group = infection.x, response = lesion.pc.d28, data = d1.d28, ylim = c(0,100), ylab = "Lesion percent cover", xlab = "Leaf number", legend = T)
+
+ ###Lesion percent cover ~ infection treatment * leaf.no (*all leaves, excluding dehisced/senesced leaves)
+par(mfrow = c(2,2))
+bargraph.CI(x.factor = exp.leaf.no, group = infection.x, response = lesion.pc.d28, data = filter(d1.d28, site.x == "DC" & dehisced.senesced == "N"), ylim = c(0,100), ylab = "Lesion percent cover", xlab = "Leaf number", legend = T) ##DC plot
+bargraph.CI(x.factor = exp.leaf.no, group = infection.x, response = lesion.pc.d28, data = filter(d1.d28, site.x == "LP" & dehisced.senesced == "N"), ylim = c(0,100), ylab = "Lesion percent cover", xlab = "Leaf number", legend = T) ##LP plot
+bargraph.CI(x.factor = exp.leaf.no, group = infection.x, response = lesion.pc.d28, data = filter(d1.d28, site.x == "NB" & dehisced.senesced == "N"), ylim = c(0,100), ylab = "Lesion percent cover", xlab = "Leaf number", legend = T) ##NB plot
+bargraph.CI(x.factor = exp.leaf.no, group = infection.x, response = lesion.pc.d28, data = filter(d1.d28, site.x == "WB" & dehisced.senesced == "N"), ylim = c(0,100), ylab = "Lesion percent cover", xlab = "Leaf number", legend = T) ##WB plot
+
+#Analyses
+model.lesion.pc.d28 <- lmer(lesion.pc.d28 ~ infection.x*site.x*exp.leaf.no + (1|shoot.ID) + (1|mesocosm.x), data = filter(d1.d28, dehisced.senesced == "N"))
+anova(model.lesion.pc.d28) ##Significant interaction: infection*leaf number, lesion.pc.d0 not significant so dropped from model, marginal 3 way interaction between infection*site*leaf number
+```
+
+##Leaf Growth Figures and Analyses
+```{r Day28 Leaf Growth}
+#Total leaf growth
+  ##FIGURES
+    ###growth effect size
+fig.growth <- barplot(c(0,0,0,0), names = d28.ef.fig$exp.leaf.no , ylim = c(-2, 2),
+                  ylab = "Effect size of disease on leaf growth",
+                  xlab = "Leaf number")
+points(x = fig.growth, d28.ef.fig$growth.ef.mean)
+arrows(y0 = d28.ef.fig$growth.ef.mean[1:4] - d28.ef.fig$growth.ef.95ci[1:4], y1 = d28.ef.fig$growth.ef.mean[1:4] + d28.ef.fig$growth.ef.95ci[1:4], x0 = fig.growth, x1 =fig.growth, angle = 90, code = 3, #95% CI
+length = 0.1)
+
+  ###Leaf 1 growth effect size by site
+fig.growth <- barplot(c(0,0,0,0), names = d1.d28.L1.total.ef.fig$site.x , ylim = c(-1, 1),
+                  ylab = "Effect size of disease on leaf 1 growth",
+                  xlab = "Site")
+points(x = fig.growth, d1.d28.L1.total.ef.fig$mean.ef)
+arrows(y0 = d1.d28.L1.total.ef.fig$mean.ef[1:4] - d1.d28.L1.total.ef.fig$CI.ef[1:4], y1 = d1.d28.L1.total.ef.fig$mean.ef[1:4] + d1.d28.L1.total.ef.fig$CI.ef[1:4], x0 = fig.growth, x1 =fig.growth, angle = 90, code = 3, #95% CI
+length = 0.1)
+
+  ##Leaf 1 growth effect size one-sample t-test
+fig.growth <- barplot(c(0), ylim = c(-1, 1),
+                  ylab = "Effect size of disease on leaf 1 growth")
+points(x = fig.growth, mean(d1.d28.L1.total.ef$growth.ef))
+arrows(y0 = mean(d1.d28.L1.total.ef$growth.ef)- 1.96*se(d1.d28.L1.total.ef$growth.ef), y1 = mean(d1.d28.L1.total.ef$growth.ef) + 1.96*se(d1.d28.L1.total.ef$growth.ef), x0 = fig.growth, x1 =fig.growth, angle = 90, code = 3, #95% CI
+length = 0.1)
+
+
+    ###Growth ~ infection treatment * leaf.no
+bargraph.CI(x.factor = exp.leaf.no, group = infection.x, response = delta.length.cm, data = filter(d1.d28.leaf.growth.total, exp.leaf.no != "4" & exp.leaf.no != "5"), ylim = c(0,15), ylab = "Leaf growth (cm)", xlab = "Leaf number", legend = T)
+
+    ###Growth ~ site * leaf.no 
+bargraph.CI(x.factor = exp.leaf.no, group = site.x, response = delta.length.cm, data = filter(d1.d28.leaf.growth.total, exp.leaf.no != "4" & exp.leaf.no != "5"), ylim = c(0,15), ylab = "Leaf growth (cm)", xlab = "Leaf number", legend = T)
+
+  ##Analyses
+model.growth.std.total <- lmer(std.length.cm.total ~ infection.x*site.x*exp.leaf.no + (1|shoot.ID) + (1|mesocosm.x) + length.cm.d0, data = filter(d1.d28.leaf.growth.total, exp.leaf.no != "4" & exp.leaf.no != "5")) #adjusting for delta sheath length 
+anova(model.growth.std.total) #Significant interactions: site*leaf number and Infection*leaf number (Excluded leaves 4 and 5 because not enough reps)
+
+    ####Only leaf 1
+model.growth.std.d28.L1 <- lmer(std.length.cm.total ~ infection.x*site.x + (1|mesocosm.x) + length.cm.d0, data = filter(d1.d28.leaf.growth.total, exp.leaf.no == "1")) #adjusting for delta sheath length 
+anova(model.growth.std.d28.L1)
+
+    ####Effect size
+model.L1.ef.total <- lmer(growth.ef ~ site.x +(1|mesocosm.x), data = d1.d28.L1.total.ef)
+anova(model.L1.ef.total)
+
+t.test(d1.d28.L1.total.ef$growth.ef, mu = 0)
+
+#Day5-Day28 leaf growth
+  ##FIGURES
+    ###Growth effect size
+fig.growth <- barplot(c(0,0,0), names = d528.ef.fig$exp.leaf.no[1:3] , ylim = c(-1, 1),
+                  ylab = "Effect size of disease on leaf growth d5-28",
+                  xlab = "Leaf number")
+points(x = fig.growth, d528.ef.fig$growth.ef.mean[1:3])
+arrows(y0 = d528.ef.fig$growth.ef.mean[1:3] - d528.ef.fig$growth.ef.95ci[1:3], y1 = d528.ef.fig$growth.ef.mean[1:3] + d528.ef.fig$growth.ef.95ci[1:3], x0 = fig.growth, x1 =fig.growth, angle = 90, code = 3, #95% CI
+length = 0.1)
+
+    ###Growth ~ infection treatment * leaf.no
+bargraph.CI(x.factor = exp.leaf.no, group = infection.x, response = delta.length.cm, data = filter(d1.d28.leaf.growth.d5d28, exp.leaf.no != "4" & exp.leaf.no != "5"), ylim = c(0,20), ylab = "Leaf growth (cm)", xlab = "Leaf number", legend = T)
+
+    ###Growth ~ site * leaf.no 
+bargraph.CI(x.factor = exp.leaf.no, group = site.x, response = delta.length.cm, data = filter(d1.d28.leaf.growth.d5d28, exp.leaf.no != "4" & exp.leaf.no != "5"), ylim = c(0,25), ylab = "Leaf growth (cm)", xlab = "Leaf number", legend = T)
+
+  ##Analyses
+model.growth.std.d5d28 <- lmer(std.length.cm.d5d28 ~ infection.x*site.x*exp.leaf.no + (1|shoot.ID) + (1|mesocosm.x) + std.length.cm.d5, data = filter(d1.d28.leaf.growth.d5d28, exp.leaf.no != "4" & exp.leaf.no != "5")) #adjusting for delta sheath length 
+anova(model.growth.std.d5d28) #Significant interactions: site*leaf number and Infection*leaf number (Excluded leaves 4 and 5 because not enough reps)
+
+    ### Only leaf 0
+model.growth.std.d5d28.L1 <- lmer(std.length.cm.d5d28 ~ infection.x*site.x + (1|mesocosm.x) + std.length.cm.d5, data = filter(d1.d28.leaf.growth.d5d28, exp.leaf.no == "0")) #adjusting for delta sheath length 
+anova(model.growth.std.d5d28.L1) #Significant interactions: site*leaf number and Infection*leaf number (Excluded leaves 4 and 5 because not enough reps)
+```
+
+
+##Change in leaf number Figures and Analyses
+```{r Day28 Leaf Number}
+#Figures
+
+  ##Change in leaves ~ site*infection
+bargraph.CI(x.factor = site.x, group = infection.x, response = delta.no.leaves, data = d1.d28.leaves, ylim = c(-2,2), ylab = "Change in the number of leaves per shoot", xlab = "Site", legend = T)
+
+  ##Change in leaves ~ infection
+bargraph.CI(x.factor = infection.x, response = delta.no.leaves, data = d1.d28.leaves, ylim = c(-2,2), ylab = "Change in the number of leaves per shoot", xlab = "Infection")
+
+  ##Change in leaves ~ site
+bargraph.CI(x.factor = site.x, response = delta.no.leaves, data = d1.d28.leaves, ylim = c(-2,2), ylab = "Change in the number of leaves per shoot", xlab = "Infection")
+
+  ##Number of leaves produced ~ infection
+  bargraph.CI(x.factor = infection.x, response = no.leaves.new, data = d1.d28.leaves, ylim = c(0, 3), ylab = "Number of leaves produced per shoot", xlab = "Infection")
+
+  ##Number of leaves lost ~ site * infection
+  bargraph.CI(x.factor = site.x, group = infection.x, response = no.leaves.lost, data = d1.d28.leaves, ylim = c(0, 3), ylab = "Number of leaves lost per shoot", xlab = "Site", legend = T)
+  
+  
+#Analyses
+model.no.leaves.d28 <- lmer(no.leaves.x ~ infection.x*site.x + (1|mesocosm.x) + no.leaves.y , data = d1.d28.leaves)
+anova(model.no.leaves.d28) #Significant main effets of infection and site, marginally significant interaction between site and infection
+
+model.new.leaves.d28 <- lmer(no.leaves.new ~ infection.x*site.x + (1|mesocosm.x) + no.leaves.y, data = d1.d28.leaves)
+anova(model.new.leaves.d28) #Significant Main effect of infection 
+
+model.leaves.lost.d28 <- lmer(no.leaves.lost ~ infection.x*site.x + (1|mesocosm.x) + no.leaves.y, data = d1.d28.leaves)
+anova(model.leaves.lost.d28) # Significant interaction between infection and site
+```
+
+## Biomass Figures and Analysis
+```{r Day28 Biomass}
+#Figures
+  ##Effect Size
+    ###Effect Size ~ Infection x site
+bargraph.CI(x.factor = site, response = tb.ef, data = d1.shoot.ef.tb, ylim = c(0,1), ylab = "Proportion Biomass reduction in disease plants over 28 days", xlab = "Site", legend = TRUE)
+
+  ##Raw Data
+    ##Total biomass: infection x site
+bargraph.CI(x.factor = site, group = infection, response = b.t.d28, data = d1.shoot, ylab = "Total biomass (g)", xlab = "Site", ylim = c(0,1), legend = TRUE)
+
+    ##above-ground: infection x site
+bargraph.CI(x.factor = site, group = infection, response = a.g.d28, data = d1.shoot, ylab = "Above-ground biomass (g)", xlab = "Site", ylim = c(0,0.7), col = c("darkgreen", "brown"))
+legend(x= "topright", legend = c("Control", "Infected"), fill = c("darkgreen", "brown"))
+
+    ##below-ground: infection x site
+bargraph.CI(x.factor = site, group = infection, response = b.g.d28, data = d1.shoot, ylab = "Below-ground biomass (g)", xlab = "Site", ylim = c(0,0.4), col = c("darkgreen", "brown"))
+legend(x= "topright", legend = c("Control", "Infected"), fill = c("darkgreen", "brown"))
+
+#Analyses
+  ##Effect Size
+model.biomass.tb.ef <- lmer(tb.ef ~ site + (1|mesocosm), data = d1.shoot.ef.tb)
+anova(model.biomass.tb.ef)
+
+summary(glht(model.biomass.tb.ef,linfct = mcp(site = "Tukey")))
+
+  ##Raw Data
+    ###total biomass
+model.biomass.A <- lmer(b.t.d28 ~ infection * site + (1|mesocosm), data = d1.shoot)
+anova(model.biomass.A)
+
+    ###above-ground biomass
+model.biomass.B <- lmer(a.g.d28 ~ infection * site + (1|mesocosm), data = d1.shoot)
+anova(model.biomass.B)
+
+    ###below-ground biomass
+model.biomass.C <- lmer(b.g.d28 ~ infection * site + (1|mesocosm), data = d1.shoot)
+anova(model.biomass.C)
+```
+
+
+##Rhizome Figures and Analyses
+```{r Day28 Rhizome Growth}
+#Figures
+  ##Effect Size
+    ###Effect Size ~ Infection x site
+bargraph.CI(x.factor = site, response = growth.ef, data = d1.shoot.ef.rhiz, ylim = c(0,1.5), ylab = "Proportion rhizome growth reduction in disease plants over 28 days", xlab = "Site", legend = TRUE)
+
+  ##Raw data
+    ##chance in rhizome length ~ infection * site
+bargraph.CI(x.factor = site, group = infection, response = rhizome.length.cm.D28-rhizome.length.cm.D0, data = filter(d1.shoot, rhizome.length.cm.D0 != "NA"), ylim = c(0,8), ylab = "Rhizome growth (cm)", xlab = "Site", legend = TRUE)
+
+#Analyses
+  ##Effect Size
+model.rhizome.growth.ef <- lmer(growth.ef ~ site + (1|mesocosm), data = d1.shoot.ef.rhiz)
+anova(model.rhizome.growth.ef)
+
+summary(glht(model.rhizome.growth.ef,linfct = mcp(site = "Tukey")))
+
+  ##Raw data
+model.rhizome.growth <- lmer(rhizome.length.cm.D28 ~ infection * site + (1|mesocosm), data = filter(d1.shoot, rhizome.length.cm.D0 != "NA"))
+anova(model.rhizome.growth) #mesocosm not significant so removed from the model
+```
+
+##Home VS. Away
+
+###Data management
+```{r Day28 Home vs. Away Data Management}
+
+d1.shoot.ef.tb$hva <- NA
+d1.shoot.ef.tb$hva[d1.shoot.ef.tb$site == "DC"] <- "home"
+d1.shoot.ef.tb$hva[d1.shoot.ef.tb$site == "LP"] <- "away"
+d1.shoot.ef.tb$hva[d1.shoot.ef.tb$site == "NB"] <- "away"
+d1.shoot.ef.tb$hva[d1.shoot.ef.tb$site == "WB"] <- "away"
+
+d1.shoot$hva <- NA
+d1.shoot$hva[d1.shoot$site == "DC"] <- "home"
+d1.shoot$hva[d1.shoot$site == "LP"] <- "away"
+d1.shoot$hva[d1.shoot$site == "NB"] <- "away"
+d1.shoot$hva[d1.shoot$site == "WB"] <- "away"
+
+```
+
+###Biomass Figures and Analysis
+```{r Day28 Home vs. Away Biomass}
+#Figures
+  ##Effect Size
+    ###Effect Size ~ Infection x site
+bargraph.CI(x.factor = hva, response = tb.ef, data = d1.shoot.ef.tb, ylim = c(0,1), ylab = "Proportion Total Biomass reduction in disease plants over 28 days", xlab = "Location", legend = TRUE)
+
+  ##Raw Data
+    ##Total biomass: infection x site
+bargraph.CI(x.factor = hva, group = infection, response = b.t.d28, data = d1.shoot, ylab = "Total biomass (g)", xlab = "Location", ylim = c(0,1), legend = TRUE)
+
+    ##above-ground: infection x site
+bargraph.CI(x.factor = hva, group = infection, response = a.g.d28, data = d1.shoot, ylab = "Above-ground biomass (g)", xlab = "Location", ylim = c(0,0.7), col = c("grey90", "black"))
+legend(x= "topright", legend = c("Control", "Infected"), fill = c("grey90", "black"))
+
+    ##below-ground: infection x site
+bargraph.CI(x.factor = hva, group = infection, response = b.g.d28, data = d1.shoot, ylab = "Below-ground biomass (g)", xlab = "Location", ylim = c(0,0.4), col = c("grey90", "black"))
+legend(x= "topright", legend = c("Control", "Infected"), fill = c("grey90", "black"))
+
+#Analyses
+  ##Effect Size
+model.biomass.tb.ef.hva <- lmer(tb.ef ~ hva + (1|site) + (1|mesocosm), data = d1.shoot.ef.tb)
+anova(model.biomass.tb.ef.hva)
+
+  ##Raw Data
+    ###total biomass
+model.biomass.A <- lmer(b.t.d28 ~ infection * hva + (1|site) + (1|mesocosm), data = d1.shoot)
+anova(model.biomass.A)
+
+    ###above-ground biomass
+model.biomass.B <- lmer(a.g.d28 ~ infection * hva + (1|site) + (1|mesocosm), data = d1.shoot)
+anova(model.biomass.B)
+
+    ###below-ground biomass
+model.biomass.C <- lmer(b.g.d28 ~ infection * hva + (1|site) + (1|mesocosm), data = d1.shoot)
+anova(model.biomass.C)
+```
+
+#Environment Analysis
+##Data manipulation
+```{r Environment Data manipulation}
+d1.env$mesocosm <- as.factor(d1.env$mesocosm)
+
+str(d1.env)
+
+d1.env.summary = d1.env %>%
+  group_by(day, experiment.day, infection) %>%
+  summarize(mean.T = mean(Temperature.C), sd.T = sd(Temperature.C), mean.S = mean(Salinity.ppt), sd.S = 1.96*sd(Salinity.ppt))
+
+str(d1.env.summary)
+
+d1.env.summary.I <- subset(d1.env.summary, infection == "Y")
+d1.env.summary.C <- subset(d1.env.summary, infection == "N")
+d1.env.summary.F <- subset(d1.env.summary, infection == "DC")
+```
+
+## Temperature Figures and Analyses
+```{r Temperature}
+#Full summer figures
+plot(dfull.env$sample.no, dfull.env$Temp.C,
+     ylim = range(c(5, 25)),
+     pch = 19,
+     cex = .25,
+     xlab = "Day",
+     ylab = "Temperature (C)")
+
+
+#Figures
+plot(d1.env.summary.F$day, d1.env.summary.F$mean.T,
+     ylim = range(c(10,25)),
+     pch = 19, col = "blue",
+     xlab = "Day of August", ylab = "Temperature (C)")
+
+arrows(d1.env.summary.F$day, d1.env.summary.F$mean.T - d1.env.summary.F$sd.T, d1.env.summary.F$day, d1.env.summary.F$mean.T + d1.env.summary.F$sd.T, length = 0.05, angle = 90, code = 3, col = "blue")
+
+points(d1.env.summary.C$day, d1.env.summary.C$mean.T,
+     pch = 1, xlab = "Day of August", ylab = "Temperature (C)")
+
+arrows(d1.env.summary.C$day, d1.env.summary.C$mean.T - d1.env.summary.C$sd.T, d1.env.summary.C$day, d1.env.summary.C$mean.T + d1.env.summary.C$sd.T, length = 0.05, angle = 90, code = 3)
+
+points(d1.env.summary.I$day, d1.env.summary.I$mean.T,
+     pch = 19, xlab = "Day of August", ylab = "Temperature (C)")
+
+arrows(d1.env.summary.I$day, d1.env.summary.I$mean.T - d1.env.summary.I$sd.T, d1.env.summary.I$day, d1.env.summary.I$mean.T + d1.env.summary.I$sd.T, length = 0.05, angle = 90, code = 3)
+
+#Analyses
+
+```
+
+## Salinity Figures and Analyses
+```{r Salinity}
+#Figures
+plot(d1.env.summary.I$day, d1.env.summary.I$mean.S,
+     ylim = range(c(30,34)),
+     pch = 19,
+     xlab = "Day of August", ylab = "Salinty (ppt)")
+
+arrows(d1.env.summary.I$day, d1.env.summary.I$mean.S - d1.env.summary.I$sd.S, d1.env.summary.I$day, d1.env.summary.I$mean.S + d1.env.summary.I$sd.S, length = 0.05, angle = 90, code = 3)
+
+points(d1.env.summary.C$day, d1.env.summary.C$mean.S,
+     pch = 1, xlab = "Day of August", ylab = "Salinity (ppt)")
+
+arrows(d1.env.summary.C$day, d1.env.summary.C$mean.S - d1.env.summary.C$sd.S, d1.env.summary.C$day, d1.env.summary.C$mean.S + d1.env.summary.C$sd.S, length = 0.05, angle = 90, code = 3)
+```
+
+
+#Field Data
+##Data manipulation
+```{r Field Data Manipulation}
+str(d1.field)
+d1.field$quad <- as.factor(d1.field$quad)
+
+#means by quad
+d1.field.quad <- d1.field %>%
+  group_by(site, quad) %>%
+  summarize(mean.length = mean(length.cm, na.rm = T), mean.leaves = mean(no.leaves, na.rm = T), mean.lp = mean(lesion.present, na.rm = T), no.shoots = mean(no.shoots))
+
+#means by site
+d1.field.site <- d1.field %>%
+  group_by(site) %>%
+  summarize(mean.lp = mean(lesion.present, na.rm = T))
+
+#mean severity by quad
+d1.field.severity <- filter(d1.field, lesion.pc.2 > 0)
+d1.field.qs <- d1.field.severity %>%
+  group_by(site,quad) %>%
+  summarize(mean.lpc = mean(lesion.pc.2))
+
+#master mean data by quad
+d1.field.quad <- merge(d1.field.quad, d1.field.qs, all.x = T)
+```
+
+##Figures
+```{r FieldFigures}
+#Site * Length
+bargraph.CI(x.factor = site, response = mean.length, data = d1.field.quad, ylab = "Length (cm)", xlab = "Site", ylim = c(0,150))
+
+#Site * Leaf number
+bargraph.CI(x.factor = site, response = mean.leaves, data = d1.field.quad, ylab = "Leaf number", xlab = "Site", ylim = c(0,6))
+
+#Site * shoot number
+bargraph.CI(x.factor = site, response = no.shoots, data = d1.field.quad, ylab = "shoot number", xlab = "Site", ylim = c(0,40))
+
+#Site * lesion prevalence
+bargraph.CI(x.factor = site, response = mean.lp, data = d1.field.quad, ylab = "Proportion infected", xlab = "Site", ylim = c(0,1))
+
+#Site * lesion percent cover
+bargraph.CI(x.factor = site, response = mean.lpc, data = d1.field.quad, ylab = "Lesion percent cover", xlab = "Site", ylim = c(0,15))
+
+#lesion prevalence * Length
+plot(mean.lp ~ mean.length, data = d1.field.quad)
+
+plot(mean.lp ~ mean.length, data = subset(d1.field.quad, site == "DC"), ylim = c(0,1), xlim = c(35,120))
+points(mean.lp ~ mean.length, data = subset(d1.field.quad, site == "LP"), col = "blue")
+points(mean.lp ~ mean.length, data = subset(d1.field.quad, site == "WB"), col = "red")
+points(mean.lp ~ mean.length, data = subset(d1.field.quad, site == "NB"), col = "orange")
+
+#lesion.prevalence * leaf number
+plot(mean.lp ~ mean.leaves, data = d1.field.quad)
+
+#lesion.prevalence * shoot number
+plot(mean.lp ~ no.shoots, data = subset(d1.field.quad, site == "DC"), xlim = c(0,70))
+points(mean.lp ~ no.shoots, data = subset(d1.field.quad, site == "LP"), col = "blue")
+points(mean.lp ~ no.shoots, data = subset(d1.field.quad, site == "WB"), col = "red")
+points(mean.lp ~ no.shoots, data = subset(d1.field.quad, site == "NB"), col = "orange")
+
+#Map of sites
+setwd("~/Dropbox/EEMB Graduate/Research/ZosteraWastingDisease/Greenhouse_Mesocosm/Innoculation Trials/Trial_2/NE_seagrass_habitat/MassDEP Seagrass (1995 and 2001)")
+ogrInfo(".", "GISDATA_EELGRASS_POLY")
+zm.95.01 <- readOGR(dsn = ".", layer = "GISDATA_EELGRASS_POLY")   #layer of seagrass habitat MA
+#str(zm.95.01)
+
+setwd("~/Dropbox/EEMB Graduate/Research/ZosteraWastingDisease/Greenhouse_Mesocosm/Innoculation Trials/Trial_2/NE_seagrass_habitat/SAV12")
+ogrInfo(".", "SAV12")
+zm.ri.12 <- readOGR(dsn = ".", layer = "SAV12")   #layer of seagrass habitat RI
+data_name <- "zm.ri.12.reproj" #name for new projection
+assign(data_name, spTransform(zm.ri.12, CRS("+proj=longlat"))) #reassigning polygons to new projection
+plot(zm.ri.12.reproj) #testing plot
+
+setwd("~/Dropbox/EEMB Graduate/Research/ZosteraWastingDisease/Greenhouse_Mesocosm/Innoculation Trials/Trial_2/State Boundaries/MA Boundary")
+ogrInfo(".", "GISDATA_OUTLINE25K_ARC")
+MA.boundary <- readOGR(dsn = ".", layer = "GISDATA_OUTLINE25K_ARC")   #layer of MA State boundary
+
+setwd("~/Dropbox/EEMB Graduate/Research/ZosteraWastingDisease/Greenhouse_Mesocosm/Innoculation Trials/Trial_2/State Boundaries/RI_CUSP")
+ogrInfo(".", "RI_CUSP")
+RI.boundary <- readOGR(dsn = ".", layer = "RI_CUSP")   #layer of RI coastline
+
+
+(setwd("~/Dropbox/EEMB Graduate/Research/ZosteraWastingDisease/Greenhouse_Mesocosm/Innoculation Trials/Trial_2/Analyses/Data for analyses")) ##Returning working direction
+
+#Site figure
+map("worldHires", "usa", xlim = c(-71.2,-70.45), ylim = c(42.2, 42.65), col = "white", fill = FALSE)
+plot(MA.boundary, add = TRUE, xlim = c(-71.2,-70.45), ylim = c(42.2, 42.65), col = "grey80")
+plot(zm.95.01, add = TRUE, xlim = c(-71.2,-70.45), ylim = c(42.2, 42.65), col = "red", border = FALSE)
+add.pie(z = c(0.6,0.4), x = -70.81579, y = 42.38063, radius = 0.02, col = c("purple", "white"), labels = "Nahant*", label.dist = 1.25, clockwise = TRUE)
+add.pie(z = c(0.29, 0.71), x = -70.80543, y = 42.464487, radius = 0.02, col = c("darkgreen", "white"), labels = "Beverly", label.dist = 1.25, clockwise = TRUE)
+add.pie(z = c(0.69, 0.31), x = -70.7309, y = 42.54013, radius = 0.02, col = c("blue", "white"), labels = c("Manchester", ""), label.dist = 1.25, clockwise = TRUE)
+add.pie(z = c(0.47, 0.53), x = -70.75592, y = 42.60711, radius = 0.02, col = c("orange", "white"), labels = c("", "Gloucester"), label.dist = 1.25, clockwise = TRUE)
+points(-70.91579, 42.42063, pch = "O", col = "purple")
+points(-70.85843, 42.54487, pch = "O", col = "darkgreen")
+points(-70.80609, 42.55913, pch = "O", col = "blue")
+points(-70.65592, 42.59711, pch = "O", col = "orange")
+points(-71.05888, 42.36008, pch = 18, col = "Black", cex = 2)
+text(-71.02, 42.335, "Boston, MA")
+map.scale(-70.637, 42.25, ratio = FALSE)
+box(col = "darkblue", lwd = "3")
+
+#seagrass distribution
+map("worldHires", "usa", xlim = c(-71.2,-70.45), ylim = c(42.2, 42.65), col = "white", fill = FALSE)
+plot(MA.boundary, add = TRUE, xlim = c(-71.2,-70.45), ylim = c(42.2, 42.65), col = "grey80")
+plot(zm.95.01, add = TRUE, xlim = c(-71.2,-70.45), ylim = c(42.2, 42.65), col = "red", border = FALSE)
+points(-71.05888, 42.36008, pch = 18, col = "Black", cex = 2)
+text(-71.02, 42.335, "Boston, MA")
+map.scale(-70.63, 42.25, ratio = FALSE)
+
+#Site locations
+map("worldHires", "usa", xlim = c(-71.2,-70.45), ylim = c(42.2, 42.65), col = "white", fill = FALSE)
+plot(MA.boundary, add = TRUE, xlim = c(-71.2,-70.45), ylim = c(42.2, 42.75), col = "grey80")
+points(-70.91579, 42.42063, pch = 17, col = "purple")
+points(-70.85843, 42.54487, pch = 17, col = "darkgreen")
+points(-70.80609, 42.55913, pch = 17, col = "blue")
+points(-70.65592, 42.59711, pch = 17, col = "orange")
+points(-71.05888, 42.36008, pch = 18, col = "Black", cex = 2)
+text(-70.85, 42.4, "Nahant")
+text( -70.92, 42.56, "Beverly")
+text(-70.7, 42.55, "Manchester")
+text(-70.58, 42.62, "Gloucester")
+text(-71.02, 42.335, "Boston, MA")
+map.scale(-70.637, 42.25, ratio = FALSE)
+box(col = "darkblue", lwd = "3")
+
+#New England seagrass distribution
+map('state', region = c('mass', 'rhode island'), col = "white")
+map("worldHires", xlim = c(-72,-69), ylim = c(40, 43.00), col = "white", fill = FALSE)
+plot(MA.boundary, add = TRUE, xlim = c(-71.2,-69), ylim = c(40, 43), col = "grey80", lwd = 0.25)
+plot(RI.boundary, add = TRUE, xlim = c(-72, -71), ylim = c(40, 42.65), col = "grey80", lwd = 0.25)
+plot(zm.95.01, add = TRUE, xlim = c(-72.2,-69), ylim = c(40, 43), col = "red", border = FALSE)
+plot(zm.ri.12.reproj, add = TRUE, col = "red", border = FALSE)
+points(-71.05888, 42.36008, pch = 18, col = "Black", cex = 2)
+text(-71.02, 42.335, "Boston, MA")
+map.scale(-72, 42, ratio = FALSE)
+```
+
+##Dorothy Cove Depth Prevalence analyses/Figures
+```{r}
+
+#Test of variation in proportion across depth
+disease <- c(21, 53, 72)
+healthy <- c(139, 75, 47)
+total <- c(160, 128, 119)
+
+prop.test(disease, total)
+
+m.dc.prev <- glm(cbind(lesion.present, lesion.absent) ~ depth, data = d1.dc.field, family = "binomial")
+summary(m.dc.prev, test = "LR")
+
+#figure, prevalence
+counts <- table(d1.dc.field$lesion.absent, d1.dc.field$depth)
+par(las =1, mgp = c(2.5, 0.2, 0), mfrow = c(1,1), mar = c(3.75,4,0.5,0.375), tck = 0.01)
+#par(oma = c(2, 1, 1, 1))
+op <- par("usr")
+barplot(counts,
+        ylab = "No. Z. marina shoots", xlab = "Depth",
+        legend = c("lesions", "no lesions"),
+        args.legend = list(x = "topright", bty = "n", cex = 1.5),
+        cex.lab = 2, cex.axis = 1.25,cex.names = 1.25,
+        ylim = c(0,200))
+
+#Test severity across depth
+m.dc.l.pc <- aov(lesion.pc.2 ~ depth, data = d1.dc.field)
+anova(m.dc.l.pc)
+
+TukeyHSD(m.dc.l.pc)
+
+#figure, severity
+bargraph.CI(x.factor = depth, response = lesion.pc.2, data = d1.dc.field, ylim = c(0,15), ylab = "Lesion percent cover", xlab = "Depth")
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+############################################################################################
+############################################################################################
+
+#Data manipulation
+```{r}
+# ###NEED TO FIX THIS AROUND TO INCORPORATE NEW DATA MANAGEMENT STRATEGY 1/11/17 :) :P
+# 
+# #change per leaf
+#   library(dplyr)
+# 
+# d2 <- select(d1, c(infection, leaf.no, length.cm, mesocosm, site))
+# d2$growth <- d2$length.d5 - d2$length.d0
+# 
+#   ##change new leaf
+# d2.new <- filter(d2, leaf.no == "0")
+# 
+#   ##change leaf 1
+# d2.1 <- filter(d2, leaf.no == "1")
+# 
+#   ##change leaf 2
+# d2.2 <- filter(d2, leaf.no == "2")
+# 
+#   ##change leaf 3
+# d2.3 <- filter(d2, leaf.no == "3")
+# 
+#   ##change leaf 4
+# d2.4 <- filter(d2, leaf.no == "4")
+# 
+# 
+# #lesion percent cover
+# 
+# d3 <- select(d1, c(mesocosm, site, infection, leaf.no, lesion.area.d5, percent.cover.d5))
+# 
+#   ##lesions leaf 1
+# d3.1 <- filter(d3, infection == "Y", leaf.no == "1")
+# 
+#   ##lesions leaf 2
+# d3.2 <- filter(d3, infection == "Y", leaf.no == "2")
+# 
+#   ##lesions leaf 3
+# d3.3 <- filter(d3, infection == "Y", leaf.no == "3")
+# 
+#   ##mean area and percent cover over leaves 1 and 2
+# d3.mean <- aggregate(lesion.area.d5 ~ mesocosm + site + infection, FUN = mean, data = subset(d3, leaf.no == "1" | leaf.no == "2"))
+# 
+# d3.mean.pc <- aggregate(percent.cover.d5 ~ mesocosm + site + infection, FUN = mean, data = subset(d3, leaf.no == "1" | leaf.no == "2"))
+# 
+# d3.mean$percent.cover.d5 <- d3.mean.pc$percent.cover.d5
+# 
+# #change no.leaves
+# d4 <- select(d1, c(mesocosm, site, infection, no.leaves.d0, no.leaves.d5, no.leaves.d28, new.leaves.d28, leaves.lost.d28))
+# d4$change.leaves.d5 <- d4$no.leaves.d5 - d4$no.leaves.d0
+# d4$change.leaves.d28 <- d4$no.leaves.d28 - d4$no.leaves.d0
+# d4 <- aggregate(data=d4, cbind(no.leaves.d0, no.leaves.d5, no.leaves.d28, change.leaves.d5, change.leaves.d28, new.leaves.d28, leaves.lost.d28) ~ infection*site*mesocosm, FUN = mean)
+# 
+# ##Leaf Growth Effect Size
+# ###Mean growth by infection and site
+# d2.mean.si <- aggregate(growth ~ site + infection + leaf.no, FUN = mean, data = subset(d2, leaf.no == "1" | leaf.no == "2"))
+# 
+# d2.ef.1 <- subset(d2, leaf.no == "1")
+# d2.ef.2 <- subset(d2, leaf.no == "2")
+# 
+# d2.ef.1.DC <- subset(d2.ef.1, site == "DC")
+# d2.ef.1.LP <- subset(d2.ef.1, site == "LP")
+# d2.ef.1.NB <- subset(d2.ef.1, site == "NB")
+# d2.ef.1.WB <- subset(d2.ef.1, site == "WB")
+# d2.ef.2.DC <- subset(d2.ef.2, site == "DC")
+# d2.ef.2.LP <- subset(d2.ef.2, site == "LP")
+# d2.ef.2.NB <- subset(d2.ef.2, site == "NB")
+# d2.ef.2.WB <- subset(d2.ef.2, site == "WB")
+# 
+# d2.ef.1.DC$growth.ef <- (4.4395455 - d2.ef.1.DC$growth)/4.4395455
+# d2.ef.1.LP$growth.ef <- (3.5593636 - d2.ef.1.LP$growth)/3.5593636
+# d2.ef.1.NB$growth.ef <- (4.4511818 - d2.ef.1.NB$growth)/4.4511818
+# d2.ef.1.WB$growth.ef <- (3.1115455 - d2.ef.1.WB$growth)/3.1115455
+# d2.ef.2.DC$growth.ef <- (0.9873636 - d2.ef.2.DC$growth)/0.9873636
+# d2.ef.2.LP$growth.ef <- (1.1100000 - d2.ef.2.LP$growth)/1.1100000
+# d2.ef.2.NB$growth.ef <- (2.1352727 - d2.ef.2.NB$growth)/2.1352727
+# d2.ef.2.WB$growth.ef <- (0.7261000 - d2.ef.2.WB$growth)/0.7261000
+# 
+# d2.ef <- rbind(d2.ef.1.DC, d2.ef.1.LP, d2.ef.1.NB, d2.ef.1.WB, d2.ef.2.DC, d2.ef.2.LP, d2.ef.2.NB, d2.ef.2.WB)
+# 
+# d2.ef <-subset(d2.ef, infection == "Y")
+# 
+# #biomass (d.28)
+# d1.shoot$b.t.d28 <- d1.shoot$a.g.d28 + d1.shoot$b.g.d28
+# 
+# d1.shoot <- filter(d1.shoot, vase != "91", vase != "92")
+# 
+# d1.shoot$rhizome.growth <- d1.shoot$rhizome.length.cm.D28 - d1.shoot$rhizome.length.cm.D0
+# 
+# ##Rhizome length effect size
+# ### (mean control[split by site] - individual infected)/ mean control [split by site]
+# d1.shoot.mean.si <- aggregate(rhizome.growth ~ site + infection, FUN = mean, data = d1.shoot)
+# 
+# d1.shoot.ef.rhiz.DC <- subset(d1.shoot, site == "DC")
+# d1.shoot.ef.rhiz.LP <- subset(d1.shoot, site == "LP")
+# d1.shoot.ef.rhiz.NB <- subset(d1.shoot, site == "NB")
+# d1.shoot.ef.rhiz.WB <- subset(d1.shoot, site == "WB")
+# 
+# d1.shoot.ef.rhiz.DC$growth.ef <- (1.863636 - d1.shoot.ef.rhiz.DC$rhizome.growth)/1.863636
+# d1.shoot.ef.rhiz.LP$growth.ef <- (3.291667 - d1.shoot.ef.rhiz.LP$rhizome.growth)/3.291667
+# d1.shoot.ef.rhiz.NB$growth.ef <- (4.416667 - d1.shoot.ef.rhiz.NB$rhizome.growth)/4.416667
+# d1.shoot.ef.rhiz.WB$growth.ef <- (2.333333 - d1.shoot.ef.rhiz.WB$rhizome.growth)/2.333333
+# 
+# d1.shoot.ef.rhiz <- rbind(d1.shoot.ef.rhiz.DC, d1.shoot.ef.rhiz.LP, d1.shoot.ef.rhiz.NB, d1.shoot.ef.rhiz.WB)
+# 
+# d1.shoot.ef.rhiz <-subset(d1.shoot.ef.rhiz, infection == "Y")
+# ```
+# 
+# #Length Area Regression
+# ```{r}
+# model.length.area <- aov(area.cm ~ length.cm*leaf.no*site*infection*experiment.day*clipped, data = d1)
+# summary(model.length.area)
+# 
+# model.length.area <- lm(area.cm ~ length.cm, data = subset(d1, length.cm >= 0 & broken.sheath != "Y"))
+# summary(model.length.area)
+# 
+# plot(area.cm ~ length.cm, ylim = c(0,30), xlim = c(0, 75), data = subset(d1, length.cm >= 0 & broken.sheath != "Y"))
+# 
+# plot(length.cm ~ area.cm, data = d1, ylim = c(0,75), xlim = c(0,30), col = c("red", "orange", "yellow", "green", "blue", "purple", "black", "brown")[leaf.no])
+# legend(x="topright", legend = levels(d1$leaf.no), col=c("red", "orange", "yellow", "green", "blue", "purple", "black", "brown"), pch=1)
+# 
+#    plot(length.cm ~ area.cm, data = subset(d1, leaf.no == "1"))
+# 
+# plot(length.cm ~ area.cm, data = d1, ylim = c(0,75), xlim = c(0,30), col = c("red", "yellow", "green", "blue")[site])
+# legend(x="topright", legend = levels(d1$site), col=c("red", "yellow", "green", "blue"), pch=1)
+# 
+# plot(length.cm ~ area.cm, data = d1, ylim = c(0,75), xlim = c(0,30), col = c("green", "brown")[infection])
+# legend(x="topright", legend = levels(d1$infection), col=c("green", "brown"), pch=1)
+# 
+# plot(length.cm ~ area.cm, data = d1, ylim = c(0,75), xlim = c(0,30), col = c("red", "blue", "green")[clipped])
+# legend(x="topright", legend = levels(d1$clipped), col=c("red", "blue", "green"), pch=1)
+# 
+# plot(length.cm ~ area.cm, data = d1, ylim = c(0,75), xlim = c(0,30), col = c("red", "blue", "green")[experiment.day])
+# legend(x="topright", legend = levels(d1$experiment.day), col=c("red", "blue", "green"), pch=1)
+```
+
+
+
+# Initial Shoot Morphology Analyses and Figures
+##Leaf Number
+```{r}
+# str(d1.shoot)
+# 
+# #Initial Leaf Number ~ treatment x Site x Mesocosm
+# bargraph.CI(x.factor = site, group = infection, response = leaf.number.D0, data = d1.shoot, ylim = c(0,6), ylab = "Leaf number", xlab = "Site", legend = TRUE)
+# 
+# model.leaf.no.D0 <- aov(leaf.number.D0 ~ infection * site + mesocosm, data = d1.shoot)
+# anova(model.leaf.no.D0) #no effect of mesocosm so dropped
+# 
+# model.leaf.no.D0 <- aov(leaf.number.D0 ~ infection * site, data = d1.shoot)
+# anova(model.leaf.no.D0) #Marginal effect of infection*site, significant effect of site
+# 
+#  #Sites tested individually
+# model.leaf.no.D0.DC <- aov(leaf.number.D0 ~ infection + mesocosm, data = filter(d1.shoot, site == "DC"))
+# anova(model.leaf.no.D0.DC) #no significant effects
+# 
+# model.leaf.no.D0.LP <- aov(leaf.number.D0 ~ infection + mesocosm, data = filter(d1.shoot, site == "LP"))
+# anova(model.leaf.no.D0.LP) #no significant effects
+# 
+# model.leaf.no.D0.NB <- aov(leaf.number.D0 ~ infection + mesocosm, data = filter(d1.shoot, site == "NB"))
+# anova(model.leaf.no.D0.NB) #no significant effects
+# 
+# model.leaf.no.D0.WB <- aov(leaf.number.D0 ~ infection + mesocosm, data = filter(d1.shoot, site == "WB"))
+# anova(model.leaf.no.D0.WB) #marginal effect of infection, significant effect of mesocosm --> due to large variability in leaf no. between shoots
+# 
+# bargraph.CI(x.factor = site, group = mesocosm, response = leaf.number.D0, data = d1.shoot, ylim = c(0,6), ylab = "Leaf number", xlab = "Site", legend = TRUE)
+# 
+# ##WB shoots had significantly fewer leaves at the start of the experiment than shoots from DC, LP, NB. No effects of infection treatment or mesocosm on initial leaf number. Marginally significant interaction between site and infection treatment??
+```
+
+##leaf Length
+```{r}
+#Leaf length ~ site * treatment * leaf.no
+# bargraph.CI(x.factor = leaf.no, group = infection, response = length.d0, data =  filter(d1, leaf.no != "5"), ylim = c(0,30), ylab = "Leaf length", xlab = "Site", legend = TRUE)
+# 
+# bargraph.CI(x.factor = leaf.no, group = site, response = length.d0, data =  filter(d1, leaf.no != "5"), ylim = c(0,30), ylab = "Leaf length", xlab = "Site", legend = TRUE)
+# 
+# bargraph.CI(x.factor = site, group = infection, response = length.d0, data =  filter(d1, leaf.no != "5"), ylim = c(0,30), ylab = "Leaf length", xlab = "Site", legend = TRUE)
+# 
+# model.leaf.length.D0 <- aov(length.d0 ~ infection * site * leaf.no + mesocosm, data = filter(d1, leaf.no != "5"))
+# anova(model.leaf.length.D0) #effect of mesocosm; interaction between site and infection --> DC infected leaves are longer than non-infected DC leaves (others sites no difference); interaction between site and leaf number --> WB plants have longer 1st leaves than other sites (function of fewer leaves); LP plants have shorter 2nd leaves than other sites (b/c they are shorter plants?); NB has longer 3rd and 4rth leaves than other sites (probably due to less infection of NB plants --> less clipping)
+# 
+# ##Leaf 1 and 2 analyses
+# bargraph.CI(x.factor = site, group = infection, response = length.d0, data =  filter(d1, leaf.no == "1"), ylim = c(0,30), ylab = "Leaf length", xlab = "Site", legend = TRUE)
+# 
+# bargraph.CI(x.factor = site, group = infection, response = length.d0, data =  filter(d1, leaf.no == "2"), ylim = c(0,30), ylab = "Leaf length", xlab = "Site", legend = TRUE)
+# 
+# model.leaf1.length.D0 <- aov(length.d0 ~ infection * site + mesocosm, data = filter(d1, leaf.no == "1"))
+# anova(model.leaf1.length.D0) #only significant effect of site --> WB taller
+# 
+# model.leaf2.length.D0 <- aov(length.d0 ~ infection * site + mesocosm, data = filter(d1, leaf.no == "2"))
+# anova(model.leaf2.length.D0) #only significant effect of site --> LP shorter
+```
+
+
+#Delta Length Figures
+```{r}
+#   #library(sciplot)
+# 
+# ###NOTE - only examined leaves 1 and 2 in order to capture all plants analyzed
+# 
+# #Leaf length
+#   ## Infection (yes or no)
+# bargraph.CI(x.factor = infection, response = growth, data = subset(d2, leaf.no == "1" | leaf.no == "2"), ylim = c(0,5), ylab = "Total change in leaf length (cm) over 5 days", xlab = "Infection")
+# 
+#   ##Infection x site
+# ixs.plot <- bargraph.CI(x.factor = site, group = infection, response = growth, data = aggregate(growth ~ infection + site + mesocosm, FUN = mean, data = subset(d2, leaf.no == " 1" | leaf.no == "2")), ylim = c(0,4), ylab = "Growth (cm) over 5 days", xlab = "Site", col = c("darkgreen", "brown"))
+# legend(x= "topright", legend = c("Control", "Infected"), fill = c("darkgreen", "brown"))
+# 
+#   ##Infection x leaf.no
+# bargraph.CI(x.factor = leaf.no, group = infection, response = growth, data = d2, ylim = c(0,6), ylab = "Total change in leaf length (cm) over 5 days", xlab = "Leaf ID number", legend = TRUE)
+# 
+# 
+#   ##Infection x mesocosm
+# bargraph.CI(x.factor = infection, group = mesocosm, response = growth, data = subset(d2, leaf.no == "1" | leaf.no == "2"), ylim = c(0,5), ylab = "Total change in leaf length (cm) over 5 days", xlab = "Infection", legend = TRUE)
+# 
+#   ##Effect Size Infection x site
+# bargraph.CI(x.factor = site, group = leaf.no, response = growth.ef, data = d2.ef, ylim = c(0,1), ylab = "Proportion growth reduction over 5 days", xlab = "Site", legend = TRUE)
+```
+
+#Delta Length Analyses
+```{r}
+# model.d2 <- aov(length.d5 ~ infection * site * leaf.no + length.d0 + mesocosm, data = subset(d2, leaf.no == "1" | leaf.no == "2"))
+# anova(model.d2)
+# 
+# model.d2.B <- aov(growth ~ infection*site*leaf.no + length.d0 + mesocosm, data = subset(d2, leaf.no == "1" | leaf.no == "2"))
+# anova(model.d2.B)
+# library(multcompView)
+# (tukey=TukeyHSD(model.d2.B))
+# multcompLetters(tukey$'infection:site'[,"p adj"])
+# multcompLetters(tukey$'infection:leaf.no'[,"p adj"])
+# 
+# ##Planned contrasts
+# model.d2.B.DC <- aov(growth ~ infection*leaf.no + length.d0 + mesocosm, data = filter(d2, leaf.no == "1" | leaf.no == "2", site =="DC"))
+# anova(model.d2.B.DC)
+# 
+# model.d2.B.LP <- aov(growth ~ infection*leaf.no + length.d0 + mesocosm, data = filter(d2, leaf.no == "1" | leaf.no == "2", site =="LP"))
+# anova(model.d2.B.LP)
+# 
+# model.d2.B.NB <- aov(growth ~ infection*leaf.no + length.d0 + mesocosm, data = filter(d2, leaf.no == "1" | leaf.no == "2", site =="NB"))
+# anova(model.d2.B.NB)
+# 
+# model.d2.B.WB <- aov(growth ~ infection*leaf.no + length.d0 + mesocosm, data = filter(d2, leaf.no == "1" | leaf.no == "2", site =="WB"))
+# anova(model.d2.B.WB)
+# 
+# 
+# ## Create an effect size
+# ### (mean control[split by site] - individual infected)/ mean control [split by site]
+# model.d2.ef.1 <- aov(growth.ef ~ site*length.d0 + mesocosm, data = subset(d2.ef, leaf.no == "1"))
+# anova(model.d2.ef.1)
+# 
+# model.d2.ef.2 <- aov(growth.ef ~ site*length.d0 + mesocosm, data = subset(d2.ef, leaf.no == "2"))
+# anova(model.d2.ef.2)
+# 
+# model.d2.ef <- aov(growth.ef ~ site*leaf.no*length.d0 + mesocosm, data = d2.ef)
+# anova(model.d2.ef)
+```
+
+#Delta leaf.no
+##Day 5 Figures
+```{r}
+# bargraph.CI(x.factor = infection, response = change.leaves, data = d4, ylim = c(-2,2), ylab = "Change in leaf number over 5 days", xlab = "Infection")
+# 
+# bargraph.CI(x.factor = site, response = change.leaves, data = d4, ylim = c(-2,2), ylab = "Change in leaf number over 5 days", xlab = "Site")
+# 
+# plot(no.leaves.d5 ~ no.leaves.d0, data = d4)
+```
+
+#Day 5 Analyes
+```{r}
+# model.d4 <- aov(no.leaves.d5 ~ infection*site + no.leaves.d0 + mesocosm, data = d4)
+# anova(model.d4)
+```
+
+##Day 28 Analyses
+```{r}
+# model.dln28 <- aov(no.leaves.d28 ~ infection * site + no.leaves.d0 + mesocosm, data = d4)
+# anova(model.dln28)
+# 
+# model.newleaf28 <- aov(new.leaves.d28 ~ infection * site + no.leaves.d0 + mesocosm, data = d4)
+# anova(model.newleaf28)
+# 
+# model.leaflost28 <- aov(leaves.lost.d28 ~ infection * site + no.leaves.d0 + mesocosm, data = d4)
+# anova(model.leaflost28)
+# 
+# (tukey=TukeyHSD(model.leaflost28))
+# multcompLetters(tukey$'infection:site'[,"p adj"])
+```
+
+##Day 28 Figures
+```{r}
+# bargraph.CI(x.factor = site, group = infection, response = change.leaves.d28, data = d4, ylim = c(-4,4), ylab = "Change in leaf number over 28 days", xlab = "Site", legend = T)
+# 
+# bargraph.CI(x.factor = site, group = infection, response = new.leaves.d28, data = d4, ylim = c(0,4), ylab = "New leaves produced over 28 days", xlab = "Site", legend = T)
+# 
+# bargraph.CI(x.factor = site, group = infection, response = leaves.lost.d28, data = d4, ylim = c(0,4), ylab = "Leaves lost over 28 days", xlab = "Site", legend = T)
+```
+
+
+#Lesion Figures
+```{r}
+# #Lesion area
+#   ##Infection x Site
+# bargraph.CI(x.factor = site, group = infection, response = lesion.area.d5, data = d3.mean, ylim = c(0,10), ylab = "Lesion area (cm2) after 5 days infection", xlab = "Site", legend = TRUE)
+# 
+#   ##Infection x Leaf.no
+# bargraph.CI(x.factor = leaf.no, group = infection, response = lesion.area.d5, data = d3, ylim = c(0,6), ylab = "Lesion area (cm2) after 5 days infection", xlab = "Leaf ID number", legend=TRUE)
+# 
+# #Lesion percent cover
+#   ##Infection x Site
+# bargraph.CI(x.factor = site, group = infection, response = percent.cover.d5, data = d3.mean, ylim = c(0,100), ylab = "Lesion percent cover after 5 days infection", xlab = "Site", col = c("darkgreen", "brown"))
+# legend(x= "topright", legend = c("Control", "Infected"), fill = c("darkgreen", "brown"))
+# 
+#   ##Infection x Leaf.no
+# bargraph.CI(x.factor = leaf.no, group = infection, response = percent.cover.d5, data = d3, ylim = c(0,100), ylab = "Lesion percent cover after 5 days infection", xlab = "Leaf ID number", legend=TRUE)
+# 
+#   ## Leaf.no (only leaves 1 & 2) x Site (infected leaves only)
+# bargraph.CI(x.factor = site, group = leaf.no, response = percent.cover.d5, data = filter(d3, infection == 'Y', leaf.no == "1" | leaf.no =="2"), ylim = c(0,100), ylab = "Lesion percent cover after 5 days infection", xlab = "Site", legend = TRUE)
+```
+
+#Lesion Analyses
+```{r}
+##Area.cm2
+# model.d3.A <- aov(lesion.area.d5 ~ infection * site * leaf.no + mesocosm, data = subset(d3, leaf.no == "1" | leaf.no == "2"))
+# anova(model.d3.A)
+# 
+# (tukey=TukeyHSD(model.d3.A))
+# multcompLetters(tukey$'infection:site'[,"p adj"])
+# multcompLetters(tukey$'infection:leaf.no'[,"p adj"])
+# 
+# 
+# ##Percent.cover
+# model.d3.B <- aov(percent.cover.d5 ~ infection * site * leaf.no + mesocosm, data = subset(d3, leaf.no == "1" | leaf.no == "2"))
+# anova(model.d3.B)
+# (tukey=TukeyHSD(model.d3.B))
+# multcompLetters(tukey$'infection:leaf.no'[,"p adj"])
+```
+
+#Biomass Figures
+```{r}
+# #Total biomass: infection x site
+# bargraph.CI(x.factor = site, group = infection, response = b.t.d28, data = d1.shoot, ylab = "Total biomass (g)", xlab = "Site", ylim = c(0,1), legend = TRUE)
+# 
+# #above-ground: infection x site
+# bargraph.CI(x.factor = site, group = infection, response = a.g.d28, data = d1.shoot, ylab = "Above-ground biomass (g)", xlab = "Site", ylim = c(0,0.7), col = c("darkgreen", "brown"))
+# legend(x= "topright", legend = c("Control", "Infected"), fill = c("darkgreen", "brown"))
+# 
+# #below-ground: infection x site
+# bargraph.CI(x.factor = site, group = infection, response = b.g.d28, data = d1.shoot, ylab = "Below-ground biomass (g)", xlab = "Site", ylim = c(0,0.4), col = c("darkgreen", "brown"))
+# legend(x= "topright", legend = c("Control", "Infected"), fill = c("darkgreen", "brown"))
+
+```
+
+#Biomass (d.28) analyses
+```{r}
+# #total biomass
+# model.biomass.A <- aov(b.t.d28 ~ infection * site + mesocosm, data = d1.shoot)
+# anova(model.biomass.A)
+# 
+# #above-ground biomass
+# model.biomass.B <- aov(a.g.d28 ~ infection * site + mesocosm, data = d1.shoot)
+# anova(model.biomass.B)
+# 
+# #below-ground biomass
+# model.biomass.C <- aov(b.g.d28 ~ infection * site + mesocosm, data = d1.shoot)
+# anova(model.biomass.C)
+
+```
+
+#Rhizome length (d.28 analyses)
+```{r}
+# bargraph.CI(x.factor = site, group = infection, response = rhizome.length.cm.D28-rhizome.length.cm.D0, data = filter(d1.shoot, rhizome.length.cm.D0 != "NA"), ylim = c(0,8), ylab = "Rhizome growth (cm)", xlab = "Site", legend = TRUE)
+# 
+# model.rhizome.growth <- aov(rhizome.length.cm.D28 ~ infection * site, data = filter(d1.shoot, rhizome.length.cm.D0 != "NA"))
+# anova(model.rhizome.growth) #mesocosm not significant so removed from the model
+# 
+# (tukey=TukeyHSD(model.rhizome.growth))
+# multcompLetters(tukey$'infection:site'[,"p adj"])
+# 
+# ###### Planned contrasts??
+# model.rhizome.growth.DC <- aov(rhizome.length.cm.D28 ~ infection, data = filter(d1.shoot, rhizome.length.cm.D0 != "NA", site == "DC"))
+# anova(model.rhizome.growth.DC)
+# 
+# model.rhizome.growth.LP <- aov(rhizome.length.cm.D28 ~ infection, data = filter(d1.shoot, rhizome.length.cm.D0 != "NA", site == "LP"))
+# anova(model.rhizome.growth.LP)
+# 
+# model.rhizome.growth.NB <- aov(rhizome.length.cm.D28 ~ infection, data = filter(d1.shoot, rhizome.length.cm.D0 != "NA", site == "NB"))
+# anova(model.rhizome.growth.NB)
+# 
+# model.rhizome.growth.WB <- aov(rhizome.length.cm.D28 ~ infection, data = filter(d1.shoot, rhizome.length.cm.D0 != "NA", site == "WB"))
+# anova(model.rhizome.growth.WB)
+# 
+# ##Effect Size
+#   ##Effect Size Infection x site
+# bargraph.CI(x.factor = site, response = growth.ef, data = d1.shoot.ef.rhiz, ylim = c(0,1.5), ylab = "Proportion growth reduction over 28 days", xlab = "Site", legend = TRUE)
+# 
+# model.rhizome.growth.ef <- aov(growth.ef ~ site, data = d1.shoot.ef.rhiz)
+# anova(model.rhizome.growth.ef) #mesocosm not significant so removed from the model
+# 
+# (tukey=TukeyHSD(model.rhizome.growth.ef))
+# multcompLetters(tukey$'site'[,"p adj"])
+```
+
+
