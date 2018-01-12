@@ -70,7 +70,7 @@ mesocosm.shoot.leaf.no.final.edit <- select(mesocosm.shoot.leaf.no.final.edit, c
 
 mesocosm.shoot <- merge(mesocosm.shoot, mesocosm.shoot.leaf.no.final.edit, by = c("month", "year", "mesocosm", "vase", "infection", "site"), all.x = T)
 
-mesocosm.shoot$survival = 0
+mesocosm.shoot$survival <- 0
 for (n in 1:88) {
   if (mesocosm.shoot$shoot.no.final[n] >= 1)
   {mesocosm.shoot$survival[n] = 1
@@ -80,6 +80,16 @@ for (n in 1:88) {
 } 
 mesocosm.shoot$mortality <- 1-mesocosm.shoot$survival
 ##adding in survival and mortality data
+
+mesocosm.shoot$shoot.production <- 0
+for (n in 1:88) {
+  if (mesocosm.shoot$shoot.no.final[n] - mesocosm.shoot$shoot.no.initial[n] >= 0) {
+    mesocosm.shoot$shoot.production[n] <- mesocosm.shoot$shoot.no.final[n]-mesocosm.shoot$shoot.no.initial[n]
+  } else {
+   mesocosm.shoot$shoot.production[n] <- NA
+  }
+  }
+##adding in shoot production
 
 str(mesocosm.shoot)
 
@@ -107,10 +117,25 @@ p <- ggplot(mesocosm.shoot, aes(x = infection, y = survival)) +
 p
 
 m.survival <- glm(cbind(survival, mortality) ~ site*infection, family = binomial, data = mesocosm.shoot)
-anova(m.survival, test = "LR")
+anova(m.survival, test = "LR") #significant effect of infection
 #Anova(Lprev.model) ##use this for P values (package = car)
 ```
-##
+
+##Shoot Production
+```{r}
+p <- ggplot(mesocosm.shoot, aes(x = site, y = shoot.production)) + 
+  #scale_fill_manual(values = c("white", "gray")) +
+  geom_violin(position = position_dodge(1)) +
+  geom_dotplot(binaxis = 'y', stackdir = 'center', position = position_dodge(1), dotsize  = 0.5) +
+  stat_summary(fun.y = mean, geom = "point", size = 3, color = "red", position = position_dodge(1)) +
+  labs(x = "Source Site", y = "# New shoots produced") +
+  theme_classic()
+p
+
+m.new.shoots <- aov(shoot.production ~ site*infection, data = mesocosm.shoot)
+anova(m.new.shoots) #significant effect of site
+```
+
 
 
 
