@@ -9,13 +9,15 @@ output: pdf_document
 ```{r Packages Library}
 library (dplyr)
 library(tidyr)
-#library(sciplot)
+library(sciplot)
 library(ggplot2)
 
 library(lme4)
 library(lmerTest)
+library(car)
 
 library(multcomp)
+library(multcompView)
 
 library(maps)
 library(mapdata)
@@ -88,10 +90,36 @@ for (n in 1:88) {
   } else {
    mesocosm.shoot$shoot.production[n] <- NA
   }
-  }
+}
+mesocosm.shoot$no.shoot.production <- 1-mesocosm.shoot$shoot.production
+
 ##adding in shoot production
 
 str(mesocosm.shoot)
+
+##Leaf growth
+mesocosm.growth.d0 <- mesocosm.leaf %>%
+  dplyr::select(mesocosm, vase, infection, experiment.day, site, exp.leaf.no, length.cm) %>%
+  subset(experiment.day == "0" & exp.leaf.no == "1") %>%
+  dplyr::select(-experiment.day)
+colnames(mesocosm.growth.d0)[6] <- "initial.length.cm"
+
+mesocosm.growth.d5 <- mesocosm.leaf %>%
+  dplyr::select(mesocosm, vase, infection, experiment.day, site, exp.leaf.no, delta.sheath.length) %>%
+  subset(experiment.day == "5" & exp.leaf.no == "1")
+mesocosm.growth.d5$delta.sheath.length[is.na(mesocosm.growth.d5$delta.sheath.length)] <-0
+
+mesocosm.growth.d28 <- mesocosm.leaf %>%
+  dplyr::select(mesocosm, vase, infection, experiment.day, site, exp.leaf.no, length.cm, delta.sheath.length) %>%
+  subset(experiment.day == "28" & exp.leaf.no == "1") %>%
+  dplyr::select(-experiment.day)
+mesocosm.growth.d28$delta.sheath.length[is.na(mesocosm.growth.d28$delta.sheath.length)] <-0
+mesocosm.growth.d28$delta.sheath.length <- mesocosm.growth.d5$delta.sheath.length + mesocosm.growth.d28$delta.sheath.length
+colnames(mesocosm.growth.d28)[6] <- "final.length.cm"
+
+mesocosm.growth <- merge(mesocosm.growth.d0, mesocosm.growth.d28, by = c("mesocosm", "vase", "infection", "site", "exp.leaf.no"))
+
+mesocosm.growth$leaf1.growth <- ((mesocosm.growth$final.length.cm - mesocosm.growth$delta.sheath.length) - mesocosm.growth$initial.length.cm)/28
 
 
 ## Environmental Data
@@ -104,27 +132,43 @@ str(mesocosm.shoot)
 ```
 
 
+#GENERAL
+#ANALYSES
+#NOTES
+```{r}
+# 1) HOW TO TREAT MESOCOSM IN MODELS?
+  #Currently treating it as a BLOCKING EFFECT (Random effect gives errors in survival and shoot production models?)
+
+# 2) LOG RESPONSE RATIO vs. SITE*INFECTION INTERACTION?
+  #Starting with SITE*INFECTION interaction because less complex
+```
+
+
 #Question 1: What are the effects of wasting disease on seagrass physiology and morphology
 ##Survival
 ```{r}
-p <- ggplot(mesocosm.shoot, aes(x = infection, y = survival)) + 
-  #scale_fill_manual(values = c("white", "gray")) +
-  #geom_violin(position = position_dodge(1)) +
+p <- ggplot(mesocosm.shoot, aes(x = site, y = survival, fill = infection)) + 
+  scale_fill_manual(values = c("white", "gray")) +
+  geom_violin(position = position_dodge(1)) +
   geom_dotplot(binaxis = 'y', stackdir = 'center', position = position_dodge(1), dotsize  = 0.5) +
   stat_summary(fun.y = mean, geom = "point", size = 3, color = "red", position = position_dodge(1)) +
   labs(x = "Source Site", y = "Proportion seagrass survived") +
   theme_classic()
 p
 
-m.survival <- glm(cbind(survival, mortality) ~ site*infection, family = binomial, data = mesocosm.shoot)
+m.survival <- glm(cbind(survival, mortality) ~ site*infection + mesocosm, family = binomial, data = mesocosm.shoot)
 anova(m.survival, test = "LR") #significant effect of infection
-#Anova(Lprev.model) ##use this for P values (package = car)
+Anova(m.survival) ##use this for P values (package = car)
+
+prop.mortality <- subset(mesocosm.shoot, infection == "N")
+sum(prop.mortality$survival)
+
 ```
 
 ##Shoot Production
 ```{r}
-p <- ggplot(mesocosm.shoot, aes(x = site, y = shoot.production)) + 
-  #scale_fill_manual(values = c("white", "gray")) +
+p <- ggplot(mesocosm.shoot, aes(x = site, y = shoot.production, fill = infection)) + 
+  scale_fill_manual(values = c("white", "gray")) +
   geom_violin(position = position_dodge(1)) +
   geom_dotplot(binaxis = 'y', stackdir = 'center', position = position_dodge(1), dotsize  = 0.5) +
   stat_summary(fun.y = mean, geom = "point", size = 3, color = "red", position = position_dodge(1)) +
@@ -134,9 +178,154 @@ p
 
 m.new.shoots <- aov(shoot.production ~ site*infection, data = mesocosm.shoot)
 anova(m.new.shoots) #significant effect of site
+m.new.shoots <- glm(cbind(shoot.production, no.shoot.production) ~ site*infection + mesocosm, family = binomial, data = mesocosm.shoot)
+anova(m.new.shoots, test = "LR")
+Anova(m.new.shoots)#significant effect of infection ##use this for P values (package = car)
+
+summary(glht(m.new.shoots, mcp(site = "Tukey"))) ##ERRORS
+
+prop.new.shoot <- subset(mesocosm.shoot, site == "LP")
+sum(prop.new.shoot$shoot.production, na.rm = T)
 ```
 
+##Leaf production
+```{r}
+p <- ggplot(mesocosm.shoot, aes(x = infection, y = no.leaves.new.final)) + 
+  #scale_fill_manual(values = c("white", "gray")) +
+  geom_violin(position = position_dodge(1)) +
+  geom_dotplot(binaxis = 'y', stackdir = 'center', position = position_dodge(1), dotsize  = 0.5) +
+  stat_summary(fun.y = mean, geom = "point", size = 3, color = "red", position = position_dodge(1)) +
+  labs(x = "Inoculation Treatment", y = "Number of New Leaves Produced") +
+  theme_classic()
+p
 
+m.new.leaves <- aov(no.leaves.new.final ~ site*infection + mesocosm, data = mesocosm.shoot)
+anova(m.new.leaves) #significant effect of infection (# of leaves intitial included as a covariate but not significant so removed)
+shapiro.test(residuals(m.new.leaves))
+leveneTest(m.new.leaves)
+plot(m.new.leaves) #distribution looks ok
+hist(residuals(m.new.leaves), main = '') #residuals look pretty normal
+
+#Summary statistics
+leaf.production.means <- mesocosm.shoot %>%
+  group_by(infection) %>%
+  summarize(mean.new.leaves = mean(no.leaves.new.final, na.rm = T), SE.new.leaves = se(no.leaves.new.final, na.rm = T))
+```
+
+##Leaf loss
+```{r}
+p <- ggplot(mesocosm.shoot, aes(x = site, y = no.leaves.lost.final, fill = infection)) + 
+  scale_fill_manual(values = c("white", "gray")) +
+  geom_violin(position = position_dodge(1)) +
+  geom_dotplot(binaxis = 'y', stackdir = 'center', position = position_dodge(1), dotsize  = 0.5) +
+  stat_summary(fun.y = mean, geom = "point", size = 3, color = "red", position = position_dodge(1)) +
+  labs(x = "Source Site", y = "Number of Leaves Lost") +
+  theme_classic()
+p
+
+m.lost.leaves <- aov(no.leaves.lost.final ~ site*infection + mesocosm + no.leaves.initial, data = mesocosm.shoot)
+anova(m.lost.leaves) #significant effect of infection (# of leaves intitial included as a covariate)
+shapiro.test(residuals(m.lost.leaves))
+leveneTest(m.lost.leaves)
+plot(m.lost.leaves) #distribution looks ok
+hist(residuals(m.lost.leaves), main = '') #residuals look pretty normal
+
+posthoc.lost.leaves <- TukeyHSD(aov(no.leaves.lost.final ~ site*infection, data = mesocosm.shoot))
+posthoc.lost.leaves
+multcompLetters(posthoc.lost.leaves$`site:infection`[,"p adj"])
+
+#Summary statistics
+leaf.loss.means <- mesocosm.shoot %>%
+  group_by(infection, site) %>%
+  summarize(mean.lost.leaves = mean(no.leaves.lost.final, na.rm = T), SE.lost.leaves = se(no.leaves.lost.final, na.rm = T))
+
+#only diseased shoots
+m.lost.leaves.disease <- aov(no.leaves.lost.final ~ site + mesocosm + no.leaves.initial, data = filter(mesocosm.shoot, infection == "Y"))
+anova(m.lost.leaves.disease)
+shapiro.test(residuals(m.lost.leaves.disease)) #pass
+leveneTest(m.lost.leaves.disease) #pass (removed mesocosm and initial leaf variables)
+plot(m.lost.leaves.disease) #distribution looks ok
+hist(residuals(m.lost.leaves.disease), main = '') #residuals look pretty normal
+
+posthoc.lost.leaves.disease <- TukeyHSD(aov(no.leaves.lost.final ~ site, data = filter(mesocosm.shoot, infection == "Y")))
+posthoc.lost.leaves.disease
+multcompLetters(posthoc.lost.leaves.disease$`site`[,"p adj"])
+```
+
+##leaf growth
+```{r}
+p <- ggplot(mesocosm.growth, aes(x = site, y = leaf1.growth)) + 
+  #scale_fill_manual(values = c("white", "gray")) +
+  geom_violin(position = position_dodge(1)) +
+  geom_dotplot(binaxis = 'y', stackdir = 'center', position = position_dodge(1), dotsize  = 0.5) +
+  stat_summary(fun.y = mean, geom = "point", size = 3, color = "red", position = position_dodge(1)) +
+  labs(x = "Source Site", y = "Leaf 1 growth cm per day") +
+  theme_classic()
+p
+p <- ggplot(mesocosm.growth, aes(x = infection, y = leaf1.growth)) + 
+  #scale_fill_manual(values = c("white", "gray")) +
+  geom_violin(position = position_dodge(1)) +
+  geom_dotplot(binaxis = 'y', stackdir = 'center', position = position_dodge(1), dotsize  = 0.5) +
+  stat_summary(fun.y = mean, geom = "point", size = 3, color = "red", position = position_dodge(1)) +
+  labs(x = "Inoculation Treatment", y = "Leaf 1 growth cm per day") +
+  theme_classic()
+p
+
+m.leaf1.growth <- aov(leaf1.growth ~ site*infection + mesocosm + initial.length.cm, data = mesocosm.growth)
+anova(m.leaf1.growth) #significant effect of infection (# of leaves intitial included as a covariate)
+shapiro.test(residuals(m.leaf1.growth)) #fails
+leveneTest(m.leaf1.growth)
+plot(m.leaf1.growth) #distribution looks ok
+hist(residuals(m.leaf1.growth), main = '') #residuals look pretty normal
+
+posthoc.growth <- TukeyHSD(aov(leaf1.growth ~ site*infection, data = mesocosm.growth))
+posthoc.growth
+multcompLetters(posthoc.growth$`site`[,"p adj"])
+
+#Summary statistics
+leaf1.growth.means <- mesocosm.growth %>%
+  group_by(infection) %>%
+  summarize(mean.leaf1.growth = mean(leaf1.growth, na.rm = T), SE.leaf1.growth = se(leaf1.growth, na.rm = T))
+```
+
+##Aboveground biomass
+```{r}
+p <- ggplot(mesocosm.shoot, aes(x = site, y = ag.biomass.final)) + 
+  #scale_fill_manual(values = c("white", "gray")) +
+  geom_violin(position = position_dodge(1)) +
+  geom_dotplot(binaxis = 'y', stackdir = 'center', position = position_dodge(1), dotsize  = 0.5) +
+  stat_summary(fun.y = mean, geom = "point", size = 3, color = "red", position = position_dodge(1)) +
+  labs(x = "Source Site", y = "Aboveground Biomass g") +
+  theme_classic()
+p
+
+p <- ggplot(mesocosm.shoot, aes(x = infection, y = ag.biomass.final)) + 
+  #scale_fill_manual(values = c("white", "gray")) +
+  geom_violin(position = position_dodge(1)) +
+  geom_dotplot(binaxis = 'y', stackdir = 'center', position = position_dodge(1), dotsize  = 0.5) +
+  stat_summary(fun.y = mean, geom = "point", size = 3, color = "red", position = position_dodge(1)) +
+  labs(x = "Source Site", y = "Aboveground Biomass g") +
+  theme_classic()
+p
+
+m.ag.biomass <- aov(ag.biomass.final ~ site*infection + mesocosm, data = mesocosm.shoot)
+anova(m.ag.biomass) #significant effect of infection (# of leaves intitial included as a covariate)
+shapiro.test(residuals(m.ag.biomass)) #pass
+leveneTest(m.ag.biomass) #pass run on model without mesocosm
+plot(m.ag.biomass) #distribution looks ok
+hist(residuals(m.ag.biomass), main = '') #residuals look pretty normal
+
+posthoc.ag.biomass <- TukeyHSD(aov(ag.biomass.final ~ site*infection, data = mesocosm.shoot))
+posthoc.ag.biomass
+multcompLetters(posthoc.ag.biomass$`site`[,"p adj"])
+
+#Summary statistics
+ag.biomass.means <- mesocosm.shoot %>%
+  group_by(site) %>%
+  summarize(mean.ag.biomass = mean(ag.biomass.final, na.rm = T), SE.ag.biomass = se(ag.biomass.final, na.rm = T))
+```
+
+##Belowground Biomass
 
 
 #Day0 Analyses
