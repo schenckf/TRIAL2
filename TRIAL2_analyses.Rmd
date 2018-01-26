@@ -137,13 +137,32 @@ for (n in 1:88) {
 ##Rhizome growth
 mesocosm.shoot$rhizome.growth <- (mesocosm.shoot$rhizome.length.final - mesocosm.shoot$rhizome.length.initial)/28
 
+
+## Field Data
+field.leaf <- read.csv("TRIAL2_field.csv")
+field.leaf$quad <- as.factor(field.leaf$quad)
+
+field.leaf$lesion.pc.2.test <- is.na(field.leaf$lesion.pc.2)
+field.leaf <- field.leaf %>%
+  filter(field.leaf$lesion.pc.2.test == FALSE) %>%
+  dplyr::select(-lesion.pc.2.test)
+
+field.leaf$lesion.present <- NA
+
+for (n in 1:1074) {
+  if (field.leaf$lesion.pc.2[n] <= 0) {
+    field.leaf$lesion.present[n] <- 0
+    } else {field.leaf$lesion.present[n] <- 1
+  }
+}
+
+field.leaf$lesion.absent <- 1-field.leaf$lesion.present
+  
+str(field.leaf)
+
 ## Environmental Data
 #d1.env <- read.csv("LabyInoc_T2_ZM_ENV_23JAN2017.csv")
 #dfull.env <- read.csv("DC_Temp_2016_Complete.csv")
-
-## Field Data
-#d1.field <- read.csv("LabyInoc_T2_ZM_field_31JAN2017.csv")
-#d1.dc.field <- read.csv("DC_2016_WD_FS.csv")
 ```
 
 
@@ -158,7 +177,7 @@ mesocosm.shoot$rhizome.growth <- (mesocosm.shoot$rhizome.length.final - mesocosm
   #Starting with SITE*INFECTION interaction because less complex
 ```
 
-
+#MESOCOSM
 #Question 1: What are the effects of wasting disease on seagrass physiology and morphology
 ##Survival
 ```{r}
@@ -176,6 +195,7 @@ anova(m.survival, test = "LR") #significant effect of infection
 Anova(m.survival) ##use this for P values (package = car)
 summary(m.survival)
 
+#summary stats
 prop.mortality <- subset(mesocosm.shoot, infection == "N")
 sum(prop.mortality$survival)
 
@@ -225,7 +245,7 @@ hist(residuals(m.new.leaves), main = '') #residuals look pretty normal
 
 #Summary statistics
 leaf.production.means <- mesocosm.shoot %>%
-  group_by(infection) %>%
+  group_by(site) %>%
   summarize(mean.new.leaves = mean(no.leaves.new.final, na.rm = T), SE.new.leaves = se(no.leaves.new.final, na.rm = T))
 ```
 
@@ -440,6 +460,129 @@ multcompLetters(posthoc.d28.lesions$`infection:exp.leaf.no`[,"p adj"])
 lesion.pc.d28.means <- lesion.pc.d28 %>%
   group_by(exp.leaf.no, infection) %>%
   summarize(mean.lesion.pc = mean(lesion.pc, na.rm= T), SE.lesion.pc = se(lesion.pc, na.rm = T))
+```
+
+#FIELD
+###Prevalence
+```{r}
+##2016
+p <- ggplot(filter(field.leaf, year == "2016"), aes(x = site, y = lesion.present)) + 
+  #scale_fill_manual(values = c("white", "gray")) +
+  geom_violin(position = position_dodge(1)) +
+  geom_dotplot(binaxis = 'y', stackdir = 'center', position = position_dodge(1), dotsize  = 0.5) +
+  stat_summary(fun.y = mean, geom = "point", size = 3, color = "red", position = position_dodge(1)) +
+  labs(x = "Source Site", y = "Proportion seagrass infected") +
+  theme_classic()
+p
+
+field.leaf$quad.unique <- paste(field.leaf$site, field.leaf$quad, sep = "_")
+
+m.prevalence <- glmer(cbind(lesion.present, lesion.absent) ~ site + (1|site/quad.unique), family = binomial, data = filter(field.leaf, year == "2016"))
+anova(m.prevalence, test = "LR") #significant effect of site
+Anova(m.prevalence) ##use this for P values (package = car)
+summary(m.prevalence)
+
+summary(glht(m.prevalence, mcp(site="Tukey")))
+
+#summary stats
+field.lesion.prev <- field.leaf %>%
+  filter(year == "2016") %>%
+  group_by(site) %>%
+  summarize(lesion.prevalence = sum(lesion.present)/(sum(lesion.present) + sum(lesion.absent)))
+
+##Model selectino on disease ~ density and length
+field.leaf.2016 <- field.leaf %>%
+  filter(year == "2016")
+field.leaf.2016.scale <- scale(field.leaf.2016[,c(8,17)], center = TRUE, scale = TRUE)#scaling data
+
+field.leaf.2016$length.scale <- field.leaf.2016.scale[,1]
+field.leaf.2016$density.scale <- field.leaf.2016.scale[,2]
+
+m.Dis1 <- glmer(cbind(lesion.present, lesion.absent) ~ length.scale + (1|site), family = binomial, data = field.leaf.2016)
+summary(m.Dis1)
+
+m.Dis2 <- glmer(cbind(lesion.present, lesion.absent) ~ density.scale + (1|site), family = binomial, data = field.leaf.2016)
+summary(m.Dis2)
+
+m.Dis3 <- glmer(cbind(lesion.present, lesion.absent) ~ length.scale + density.scale + (1|site), family = binomial, data = field.leaf.2016)
+summary(m.Dis3)
+
+AIC(m.Dis1, m.Dis2, m.Dis3)
+
+##2017
+p <- ggplot(filter(field.leaf, year == "2017" & leaf.no == "3"), aes(x = site, y = lesion.present)) + 
+  #scale_fill_manual(values = c("white", "gray")) +
+  geom_violin(position = position_dodge(1)) +
+  geom_dotplot(binaxis = 'y', stackdir = 'center', position = position_dodge(1), dotsize  = 0.5) +
+  stat_summary(fun.y = mean, geom = "point", size = 3, color = "red", position = position_dodge(1)) +
+  labs(x = "Source Site", y = "Proportion seagrass infected") +
+  theme_classic()
+p
+
+m.prevalence2017 <- glm(cbind(lesion.present, lesion.absent) ~ site, family = binomial, data = filter(field.leaf, year == "2017" & leaf.no == "3"))
+anova(m.prevalence2017, test = "LR") #no effect of site
+Anova(m.prevalence) ##use this for P values (package = car)
+```
+
+###Density
+```{r}
+##2016
+field.quad <- field.leaf %>%
+  filter(year == "2016") %>%
+  group_by(site, quad) %>%
+  summarize(shoot.m2 = mean(shoot.m2, na.rm = T), prevalence = sum(lesion.present)/(sum(lesion.present) + sum(lesion.absent)))
+
+p <- ggplot(field.quad, aes(x = site, y = shoot.m2)) + 
+  #scale_fill_manual(values = c("white", "gray")) +
+  geom_violin(position = position_dodge(1)) +
+  geom_dotplot(binaxis = 'y', stackdir = 'center', position = position_dodge(1), dotsize  = 0.5) +
+  stat_summary(fun.y = mean, geom = "point", size = 3, color = "red", position = position_dodge(1)) +
+  labs(x = "Source Site", y = "Eelgrass density shoots/m2") +
+  theme_classic()
+p
+
+plot(shoot.m2 ~ prevalence, field.quad)
+
+m.density <- aov(shoot.m2 ~ site*prevalence, data = field.quad)
+anova(m.density) #no significant effects
+```
+
+###Length
+```{r}
+##2016
+field.leaf$lesion.present.factor <- as.factor(field.leaf$lesion.present)
+
+p <- ggplot(field.leaf.2016, aes(x = site, y = length.cm)) + 
+  scale_fill_manual(values = c("white", "gray")) +
+  #geom_violin(position = position_dodge(1)) +
+  geom_dotplot(binaxis = 'y', stackdir = 'center', position = position_dodge(1), dotsize  = 0.5) +
+  stat_summary(fun.y = mean, geom = "point", size = 3, color = "red", position = position_dodge(1)) +
+  labs(x = "Source Site", y = "Eelgrass length (cm)") +
+  theme_classic()
+p
+
+p <- ggplot(field.leaf.2016, aes(x = lesion.present.factor, y = length.cm)) + 
+  scale_fill_manual(values = c("white", "gray")) +
+  #geom_violin(position = position_dodge(1)) +
+  geom_dotplot(binaxis = 'y', stackdir = 'center', position = position_dodge(1), dotsize  = 0.5) +
+  stat_summary(fun.y = mean, geom = "point", size = 3, color = "red", position = position_dodge(1)) +
+  labs(x = "Lesion status", y = "Eelgrass length (cm)") +
+  theme_classic()
+p
+
+m.length <- aov(length.cm ~ site*lesion.present.factor + site/quad, data = field.leaf.2016)
+summary(m.length) #significant effects of site and disease status (need to fix model to have site/quad as random effect?)
+anova(m.length)
+
+posthoc.length <- TukeyHSD(aov(length.cm ~ site*lesion.present.factor, data = field.leaf.2016))
+posthoc.length
+multcompLetters(posthoc.length$`site`[,"p adj"])
+
+#summary statistics
+field.length.summary <- field.leaf.2016 %>%
+  group_by(site) %>%
+  summarize(length.mean = mean(length.cm, na.rm = T), length.se = se(length.cm, na.rm = T))
+
 ```
 
 
