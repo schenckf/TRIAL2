@@ -7,27 +7,38 @@ output: pdf_document
 
 #Packages Library
 ```{r Packages Library}
+#Data manipulation and plotting packages
 library (dplyr)
 library(tidyr)
 library(sciplot)
 library(ggplot2)
 
-library(lme4)
-library(lmerTest)
-library(car)
+#Analyses packages
+library(lme4) #Random effects
+#library(lmerTest)
+library(car) #P values for glm
+library(multcomp) #Tukey tests
+library(multcompView) #Tukey tests
 
-library(multcomp)
-library(multcompView)
 
-library(maps)
+
+#Site mapping packages
+#library(maps)  #also in temp and salinity
+#library(rgdal) #also in temp and salinity
 library(mapdata)
 library(mapplots)
 library(mapproj)
 #library(maptools) #didn't work for shape file
 #gpclibPermit() # Not permited
-
-library(rgdal)
 library(sp)
+
+#Temp and salinity data packages
+library(rgdal)
+library(raster)
+library(viridis) #color palettes
+library(maps)
+library(scales)
+
 
 ```
 
@@ -584,6 +595,88 @@ field.length.summary <- field.leaf.2016 %>%
   summarize(length.mean = mean(length.cm, na.rm = T), length.se = se(length.cm, na.rm = T))
 
 ```
+
+##Environmental Variables
+```{r}
+# function to extract raster data within a radius defined by buffer (in meters...10000m = 10km)
+buff <- function(rast,buffer=500) {
+  unlist(lapply(extract( rast, T2.geo, buffer=buffer ),mean,na.rm=T))
+}
+
+########### Bio-ORACLE ##################
+##Time period present 2000-2014
+# get a list of files to work with
+files <- list.files( "BioOracle Data/",pattern = ".asc")
+
+# read in the raster data files and give appropriate projects (lat/lon WGS84)
+r <- lapply( paste0("BioOracle Data/",files), raster )
+# crop all rasters to same extent, and get rid of southern hemisphere
+e <- extent(-180,180,0,70)
+r2 <- lapply( r, function(rast) crop(rast,e) )
+
+#Adding in site lat and long data frame
+site <- c("Gloucester", "Nahant", "Manchester", "Beverly")
+Longitude <- c(-70.65592, -70.91579, -70.80609, -70.85843)
+Latitude <- c(42.59711, 42.42063, 42.55913, 42.54487)
+T2.site.LL <- data.frame(cbind(Longitude, Latitude))
+T2.site.LL$site <- site
+str(T2.site.LL)
+T2.geo <- T2.site.LL[, c("Longitude", "Latitude")]
+str(T2.geo)
+
+
+# Use a buffer over which to look for surrounding cells that might have data and average them
+# This will take a while for many variables
+buffer <- 500 #2km buffer ... no different from 10km buffer
+
+# Apply the extract function to all rasters
+T2.oracle <- lapply(r2, buff)
+
+# combine all of these into a data.frame and give them names
+Environmentals <- data.frame(do.call(cbind, T2.oracle))
+names(Environmentals) <- unlist(strsplit(files,".asc"))
+
+# add the environmental data as additional columns on SubsiteData
+T2.site.Env <- cbind( T2.site.LL, Environmentals)
+
+# plot a map with any number of sites
+
+#uploading MA maps data
+ogrInfo(".", "GISDATA_OUTLINE25K_ARC")
+MA.boundary <- readOGR(dsn = ".", layer = "GISDATA_OUTLINE25K_ARC")   #layer of MA State boundary
+
+# define the sites to plotted, and make the points a SpatialPoints object
+dplot <- T2.site.Env[,1:2] #for gloucester insert "T2.site.Env$site == "Gloucester"" into x spot
+points <- SpatialPoints(coords = dplot, proj4string = CRS("+proj=longlat +datum=WGS84"))
+# define the center of the site locations
+cent <- apply(dplot,2,mean)
+
+xtralat <- 0.5
+xtralon <- 0.5
+# define the extent of the plotting area
+e2 <- extent( c( cent[1]-xtralon, cent[1]+xtralon, cent[2]-xtralat, cent[2]+xtralat) )
+e3 <- extent( c( cent[1]-xtralon/2, cent[1]+xtralon/2, cent[2]-xtralat/2, cent[2]+xtralat/2) )
+
+# stack the data layers
+s <- stack(r2)
+# redefine the extent of s to match e
+se <- crop(s,e2)
+
+extract( se, dplot, buffer=buffer )
+
+# then pick which ones we want to plot
+picks <- c("Present.Surface.Temperature.Max")
+splot <- subset( se, which(names(se)%in%picks) )
+
+#map("worldHires", "usa", xlim = c(-71.2,-70.45), ylim = c(42.2, 42.65), col = alpha("whitesmoke", 1), fill = FALSE)
+plot( splot[[1]],col=viridis(256),
+      ylim=e2[3:4]) 
+plot(MA.boundary, add = TRUE, xlim = c(-71.2,-70.45), ylim = c(42.2, 42.65), col = "grey80", fill = TRUE)
+#map( 'world', add=T, fill=T, col=alpha("whitesmoke",1) )
+plot( points, cex=2, add=T, col = "orange" )
+plot( points, pch=1, cex=2, add=T, col = "orange" )
+```
+
 
 
 
