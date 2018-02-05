@@ -591,7 +591,7 @@ multcompLetters(posthoc.length$`site`[,"p adj"])
 
 #summary statistics
 field.length.summary <- field.leaf.2016 %>%
-  group_by(site) %>%
+  group_by(lesion.present.factor) %>%
   summarize(length.mean = mean(length.cm, na.rm = T), length.se = se(length.cm, na.rm = T))
 
 ```
