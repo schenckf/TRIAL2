@@ -15,6 +15,8 @@ library(ggplot2)
 
 #Analyses packages
 library(lme4) #Random effects
+library(lmerTest) #Pvalues for Random effects
+library(lsmeans) #post-hoc for random effects models
 #library(lmerTest)
 library(car) #P values for glm
 library(multcomp) #Tukey tests
@@ -201,10 +203,14 @@ p <- ggplot(mesocosm.shoot, aes(x = site, y = survival, fill = infection)) +
   theme_classic()
 p
 
+##NEED TO FIGURE OUT ANALYSES with Random effects!!
 m.survival <- glm(cbind(survival, mortality) ~ site*infection + mesocosm, family = binomial, data = mesocosm.shoot)
 anova(m.survival, test = "LR") #significant effect of infection
 Anova(m.survival) ##use this for P values (package = car)
 summary(m.survival)
+
+m.survival <- glmer(cbind(survival, mortality) ~ site*infection + (1|mesocosm), family = binomial, data = mesocosm.shoot)
+anova(m.survival)
 
 #summary stats
 prop.mortality <- subset(mesocosm.shoot, infection == "N")
@@ -223,7 +229,8 @@ p <- ggplot(mesocosm.shoot, aes(x = site, y = shoot.production, fill = infection
   theme_classic()
 p
 
-m.new.shoots <- aov(shoot.production ~ site*infection, data = mesocosm.shoot)
+##NEED To sort out THIS ANALYSIS !!
+m.new.shoots <- lmer(shoot.production ~ site*infection + (1|mesocosm), data = mesocosm.shoot)
 anova(m.new.shoots) #significant effect of site
 m.new.shoots <- glm(cbind(shoot.production, no.shoot.production) ~ site*infection + mesocosm, family = binomial, data = mesocosm.shoot)
 anova(m.new.shoots, test = "LR")
@@ -249,10 +256,14 @@ p
 
 m.new.leaves <- aov(no.leaves.new.final ~ site*infection + mesocosm, data = mesocosm.shoot)
 anova(m.new.leaves) #significant effect of infection (# of leaves intitial included as a covariate but not significant so removed)
-shapiro.test(residuals(m.new.leaves))
-leveneTest(m.new.leaves)
+shapiro.test(residuals(m.new.leaves)) #passed
+leveneTest(m.new.leaves) #passed
 plot(m.new.leaves) #distribution looks ok
 hist(residuals(m.new.leaves), main = '') #residuals look pretty normal
+
+#MESOCOSM AS RANDOM EFFECT
+m.new.leaves <- lmer(no.leaves.new.final ~ site*infection + (1|mesocosm), data = mesocosm.shoot)
+anova(m.new.leaves)
 
 #Summary statistics
 leaf.production.means <- mesocosm.shoot %>%
@@ -273,8 +284,8 @@ p
 
 m.lost.leaves <- aov(no.leaves.lost.final ~ site*infection + mesocosm + no.leaves.initial, data = mesocosm.shoot)
 anova(m.lost.leaves) #significant effect of infection (# of leaves intitial included as a covariate)
-shapiro.test(residuals(m.lost.leaves))
-leveneTest(m.lost.leaves)
+shapiro.test(residuals(m.lost.leaves)) #pass
+leveneTest(m.lost.leaves) #pass
 plot(m.lost.leaves) #distribution looks ok
 hist(residuals(m.lost.leaves), main = '') #residuals look pretty normal
 
@@ -282,22 +293,31 @@ posthoc.lost.leaves <- TukeyHSD(aov(no.leaves.lost.final ~ site*infection, data 
 posthoc.lost.leaves
 multcompLetters(posthoc.lost.leaves$`site:infection`[,"p adj"])
 
+m.lost.leaves <- lmer(no.leaves.lost.final ~ site*infection + no.leaves.initial + (1|mesocosm), data = mesocosm.shoot)
+anova(m.lost.leaves)
+summary(m.lost.leaves)
+
+#posthoc tests
+lost.leaves.lsmo <- lsmeans::lsmeans(m.lost.leaves, ~site:infection)
+lost.leaves.cld <- cld(lost.leaves.lsmo, adjust = 'tukey')
+lost.leaves.cld
+
 #Summary statistics
 leaf.loss.means <- mesocosm.shoot %>%
   group_by(infection, site) %>%
   summarize(mean.lost.leaves = mean(no.leaves.lost.final, na.rm = T), SE.lost.leaves = se(no.leaves.lost.final, na.rm = T))
 
 #only diseased shoots
-m.lost.leaves.disease <- aov(no.leaves.lost.final ~ site + mesocosm + no.leaves.initial, data = filter(mesocosm.shoot, infection == "Y"))
-anova(m.lost.leaves.disease)
-shapiro.test(residuals(m.lost.leaves.disease)) #pass
-leveneTest(m.lost.leaves.disease) #pass (removed mesocosm and initial leaf variables)
-plot(m.lost.leaves.disease) #distribution looks ok
-hist(residuals(m.lost.leaves.disease), main = '') #residuals look pretty normal
+#m.lost.leaves.disease <- aov(no.leaves.lost.final ~ site + mesocosm + no.leaves.initial, data = filter(mesocosm.shoot, infection == "Y"))
+#anova(m.lost.leaves.disease)
+#shapiro.test(residuals(m.lost.leaves.disease)) #pass
+#leveneTest(m.lost.leaves.disease) #pass (removed mesocosm and initial leaf variables)
+#plot(m.lost.leaves.disease) #distribution looks ok
+#hist(residuals(m.lost.leaves.disease), main = '') #residuals look pretty normal
 
-posthoc.lost.leaves.disease <- TukeyHSD(aov(no.leaves.lost.final ~ site, data = filter(mesocosm.shoot, infection == "Y")))
-posthoc.lost.leaves.disease
-multcompLetters(posthoc.lost.leaves.disease$`site`[,"p adj"])
+#posthoc.lost.leaves.disease <- TukeyHSD(aov(no.leaves.lost.final ~ site, data = filter(mesocosm.shoot, infection == "Y")))
+#posthoc.lost.leaves.disease
+#multcompLetters(posthoc.lost.leaves.disease$`site`[,"p adj"])
 ```
 
 ##leaf growth
@@ -329,6 +349,9 @@ hist(residuals(m.leaf1.growth), main = '') #residuals look pretty normal
 posthoc.growth <- TukeyHSD(aov(leaf1.growth ~ site*infection, data = mesocosm.growth))
 posthoc.growth
 multcompLetters(posthoc.growth$`site`[,"p adj"])
+
+m.leaf1.growth <- lmer(leaf1.growth ~ site*infection + initial.length.cm + (1|mesocosm), data = mesocosm.growth)
+anova(m.leaf1.growth)
 
 #Summary statistics
 leaf1.growth.means <- mesocosm.growth %>%
@@ -367,6 +390,14 @@ posthoc.ag.biomass <- TukeyHSD(aov(ag.biomass.final ~ site*infection, data = mes
 posthoc.ag.biomass
 multcompLetters(posthoc.ag.biomass$`site`[,"p adj"])
 
+m.ag.biomass <- lmer(ag.biomass.final ~ site*infection + (1|mesocosm), data = mesocosm.shoot)
+anova(m.ag.biomass)
+
+#posthoc tests
+ag.lsmo <- lsmeans::lsmeans(m.ag.biomass, ~site)
+ag.lsmo.cld <- cld(ag.lsmo, adjust = 'tukey')
+ag.lsmo.cld
+
 #Summary statistics
 ag.biomass.means <- mesocosm.shoot %>%
   group_by(site) %>%
@@ -404,6 +435,14 @@ posthoc.bg.biomass <- TukeyHSD(aov(bg.biomass.final ~ site*infection + mesocosm,
 posthoc.bg.biomass
 multcompLetters(posthoc.bg.biomass$`site`[,"p adj"])
 
+m.bg.biomass <- lmer(bg.biomass.final ~ site*infection + (1|mesocosm), data = mesocosm.shoot)
+anova(m.bg.biomass)
+
+#posthoc tests
+bg.lsmo <- lsmeans::lsmeans(m.bg.biomass, ~site)
+bg.lsmo.cld <- cld(bg.lsmo, adjust = 'tukey')
+bg.lsmo.cld
+
 #Summary statistics
 bg.biomass.means <- mesocosm.shoot %>%
   group_by(infection) %>%
@@ -431,6 +470,14 @@ hist(residuals(m.rhizome.growth), main = '') #residuals look pretty normal
 posthoc.rhizome.growth <- TukeyHSD(aov(rhizome.growth ~ site*infection + mesocosm, data = mesocosm.shoot))
 posthoc.rhizome.growth
 multcompLetters(posthoc.rhizome.growth$`site:infection`[,"p adj"])
+
+m.rhizome.growth <- lmer(rhizome.growth ~ site*infection + (1|mesocosm), data = mesocosm.shoot)
+anova(m.rhizome.growth)
+
+#posthoc tests
+rz.lsmo <- lsmeans::lsmeans(m.rhizome.growth, ~site:infection)
+rz.lsmo.cld <- cld(rz.lsmo, adjust = 'tukey')
+rz.lsmo.cld
 
 #Summary statistics
 rhizome.growth.means <- mesocosm.shoot %>%
@@ -488,7 +535,7 @@ p
 
 field.leaf$quad.unique <- paste(field.leaf$site, field.leaf$quad, sep = "_")
 
-m.prevalence <- glmer(cbind(lesion.present, lesion.absent) ~ site + (1|site/quad.unique), family = binomial, data = filter(field.leaf, year == "2016"))
+m.prevalence <- glmer(cbind(lesion.present, lesion.absent) ~ site + (1|quad.unique), family = binomial, data = filter(field.leaf, year == "2016"))
 anova(m.prevalence, test = "LR") #significant effect of site
 Anova(m.prevalence) ##use this for P values (package = car)
 summary(m.prevalence)
@@ -508,17 +555,46 @@ field.leaf.2016.scale <- scale(field.leaf.2016[,c(8,17)], center = TRUE, scale =
 
 field.leaf.2016$length.scale <- field.leaf.2016.scale[,1]
 field.leaf.2016$density.scale <- field.leaf.2016.scale[,2]
+field.leaf.2016$density.decm <- field.leaf.2016$shoot.m2/100
 
-m.Dis1 <- glmer(cbind(lesion.present, lesion.absent) ~ length.scale + (1|site), family = binomial, data = field.leaf.2016)
+m.Dis1 <- glmer(cbind(lesion.present, lesion.absent) ~ length.cm + (1|site), family = binomial, data = field.leaf.2016)
 summary(m.Dis1)
 
-m.Dis2 <- glmer(cbind(lesion.present, lesion.absent) ~ density.scale + (1|site), family = binomial, data = field.leaf.2016)
+m.Dis2 <- glmer(cbind(lesion.present, lesion.absent) ~ density.decm + (1|site), family = binomial, data = field.leaf.2016)
 summary(m.Dis2)
 
-m.Dis3 <- glmer(cbind(lesion.present, lesion.absent) ~ length.scale + density.scale + (1|site), family = binomial, data = field.leaf.2016)
+m.Dis3 <- glmer(cbind(lesion.present, lesion.absent) ~ length.cm + density.decm + (1|site), family = binomial, data = field.leaf.2016)
 summary(m.Dis3)
 
 AIC(m.Dis1, m.Dis2, m.Dis3)
+
+#making plot and figure out % increase in disease per cm
+#Plot length effect, hold density at 200 shoots/m2 and Epiphytes at 1.8 mg/cm2
+#dataset for predictions
+tmpdat <- survey[, c("length.cm", "site")]
+jvalues <- with(field.leaf.2016, seq(from = min(length.cm), to = max(length.cm), length.out = 477))
+
+#predict results
+LengthOut <- lapply(jvalues, function(j) {
+  tmpdat$length.cm <- j
+  predict(m.Dis1, newdata = tmpdat, type = "response")
+})
+
+plotLengthOut<- t(sapply(LengthOut, function(x) {
+  c(M = mean(x), quantile(x, c(0.25, 0.75)))
+}))
+
+# create data frame and rename
+plotLengthOut <- as.data.frame(cbind(plotLengthOut, jvalues))
+
+colnames(plotLengthOut) <- c("PredictedProbability", "Lower", "Upper", "Length")
+
+ppLength<-ggplot(plotLengthOut, aes(x = Length, y = PredictedProbability)) + geom_line() + geom_linerange(aes(ymin = Lower, ymax = Upper)) + ylim(c(0, 1)) + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.background = element_blank(), axis.line = element_line(colour = "black"), panel.border = element_rect(colour = "black", fill=NA, size=1))+ylab("Probability of disease")+xlab("Shoot Length (cm)") +theme(text = element_text(size=16)) 
+ppLength
+
+prob.model <- lm(PredictedProbability ~ Length, data = plotLengthOut)
+summary(prob.model)
+
 
 ##2017
 p <- ggplot(filter(field.leaf, year == "2017" & leaf.no == "3"), aes(x = site, y = lesion.present)) + 
@@ -554,7 +630,7 @@ p
 
 plot(shoot.m2 ~ prevalence, field.quad)
 
-m.density <- aov(shoot.m2 ~ site*prevalence, data = field.quad)
+m.density <- aov(shoot.m2 ~ site, data = field.quad)
 anova(m.density) #no significant effects
 ```
 
@@ -581,13 +657,20 @@ p <- ggplot(field.leaf.2016, aes(x = lesion.present.factor, y = length.cm)) +
   theme_classic()
 p
 
-m.length <- aov(length.cm ~ site*lesion.present.factor + site/quad, data = field.leaf.2016)
+m.length <- lmer(length.cm ~ site + (1|quad.unique), data = field.leaf.2016)
 summary(m.length) #significant effects of site and disease status (need to fix model to have site/quad as random effect?)
-anova(m.length)
+lmerTest::anova(m.length)
 
-posthoc.length <- TukeyHSD(aov(length.cm ~ site*lesion.present.factor, data = field.leaf.2016))
+#posthoc tests
+posthoc.length <- TukeyHSD(aov(length.cm ~ site, data = field.leaf.2016))
 posthoc.length
 multcompLetters(posthoc.length$`site`[,"p adj"])
+
+summary(glht(m.length, mcp(site="Tukey")))
+
+length.lsmo <- lsmeans::lsmeans(m.length, ~site)
+length.cld <- cld(length.lsmo, adjust = 'tukey')
+length.cld
 
 #summary statistics
 field.length.summary <- field.leaf.2016 %>%
