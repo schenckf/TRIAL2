@@ -17,6 +17,7 @@ library(ggplot2)
 library(lme4) #Random effects
 library(lmerTest) #Pvalues for Random effects
 library(lsmeans) #post-hoc for random effects models
+library(bbmle)
 #library(lmerTest)
 library(car) #P values for glm
 library(multcomp) #Tukey tests
@@ -40,6 +41,9 @@ library(raster)
 library(viridis) #color palettes
 library(maps)
 library(scales)
+
+#Model
+library(deSolve)
 
 
 ```
@@ -173,6 +177,12 @@ field.leaf$lesion.absent <- 1-field.leaf$lesion.present
   
 str(field.leaf)
 
+##2016
+field.quad <- field.leaf %>%
+  filter(year == "2016") %>%
+  group_by(site, quad) %>%
+  summarize(density.decm = mean(shoot.m2, na.rm = T)/100, canopy.height = mean(length.cm, na.rm = T), prevalence = sum(lesion.present)/(sum(lesion.present) + sum(lesion.absent)))
+
 ## Environmental Data
 #d1.env <- read.csv("LabyInoc_T2_ZM_ENV_23JAN2017.csv")
 #dfull.env <- read.csv("DC_Temp_2016_Complete.csv")
@@ -243,6 +253,39 @@ prop.new.shoot <- subset(mesocosm.shoot, site == "LP")
 sum(prop.new.shoot$shoot.production, na.rm = T)
 ```
 
+##Leaf number
+```{r}
+p <- ggplot(mesocosm.shoot, aes(x = infection, y = no.leaves.initial)) + 
+  #scale_fill_manual(values = c("white", "gray")) +
+  geom_violin(position = position_dodge(1)) +
+  geom_dotplot(binaxis = 'y', stackdir = 'center', position = position_dodge(1), dotsize  = 0.5) +
+  stat_summary(fun.y = mean, geom = "point", size = 3, color = "red", position = position_dodge(1)) +
+  labs(x = "Inoculation Treatment", y = "Number of New Leaves Produced") +
+  theme_classic()
+p
+
+m.leaves.initial <- aov(no.leaves.initial ~ site*infection + mesocosm, data = mesocosm.shoot)
+anova(m.leaves.initial) #significant effect of infection (# of leaves intitial included as a covariate but not significant so removed)
+shapiro.test(residuals(m.leaves.initial)) #passed
+leveneTest(m.leaves.initial) #passed
+plot(m.leaves.initial) #distribution looks ok
+hist(residuals(m.leaves.initial), main = '') #residuals look pretty normal
+
+#MESOCOSM AS RANDOM EFFECT
+m.leaves.initial <- lmer(no.leaves.initial ~ site*infection + (1|mesocosm), data = mesocosm.shoot)
+anova(m.leaves.initial)
+
+#Summary statistics
+leaf.initial.means <- mesocosm.shoot %>%
+  group_by(site) %>%
+  summarize(mean.leaves.initial = mean(no.leaves.initial, na.rm = T), SE.new.leaves = se(no.leaves.initial, na.rm = T))
+
+#DC, NB, LP mean leaf #
+(3.5 + 3.64 + 3.59)/3 #= 3.58
+#WB mean leaf # = 2.64
+```
+
+
 ##Leaf production
 ```{r}
 p <- ggplot(mesocosm.shoot, aes(x = infection, y = no.leaves.new.final)) + 
@@ -267,8 +310,17 @@ anova(m.new.leaves)
 
 #Summary statistics
 leaf.production.means <- mesocosm.shoot %>%
-  group_by(site) %>%
+  group_by(infection) %>%
   summarize(mean.new.leaves = mean(no.leaves.new.final, na.rm = T), SE.new.leaves = se(no.leaves.new.final, na.rm = T))
+
+#leaves produced/leaf: healthy DC, NB, LP
+1.88/3.58 #= 0.53
+#leaves produced/leaf: healthy WB
+1.88/2.64 #= 0.71
+#leaves produced/leaf: infected DC, NB, LP
+1.21/3.58 #=0.34
+#leaves produced/leaf: infected WB
+1.21/2.64 #=0.46
 ```
 
 ##Leaf loss
@@ -306,6 +358,10 @@ lost.leaves.cld
 leaf.loss.means <- mesocosm.shoot %>%
   group_by(infection, site) %>%
   summarize(mean.lost.leaves = mean(no.leaves.lost.final, na.rm = T), SE.lost.leaves = se(no.leaves.lost.final, na.rm = T))
+
+
+#DC healthy: 1.3/3.58 = 0.36; NB healthy: 0.64/3.58 = 0.18; LP healthy: 0.64/3.58 = 0.18; WB healthy: 0.73/2.64 = 0.28
+#DC infected: 2/3.58 = 0.56; NB infected: 1.82/3.58 = 0.51; LP infected: 2.7/3.58 = 0.75; WB infected: 1.22/2.64 = 0.46
 
 #only diseased shoots
 #m.lost.leaves.disease <- aov(no.leaves.lost.final ~ site + mesocosm + no.leaves.initial, data = filter(mesocosm.shoot, infection == "Y"))
@@ -535,12 +591,36 @@ p
 
 field.leaf$quad.unique <- paste(field.leaf$site, field.leaf$quad, sep = "_")
 
+#prevalence by site with quad within site as a random variable
 m.prevalence <- glmer(cbind(lesion.present, lesion.absent) ~ site + (1|quad.unique), family = binomial, data = filter(field.leaf, year == "2016"))
 anova(m.prevalence, test = "LR") #significant effect of site
 Anova(m.prevalence) ##use this for P values (package = car)
 summary(m.prevalence)
 
 summary(glht(m.prevalence, mcp(site="Tukey")))
+
+#Multiple regression approach with length, density as fixed effects, and a random effect of quad ... or is this an ANCOVA
+m.prevalence2.full <- glmer(cbind(lesion.present, lesion.absent) ~ length.cm + density.decm + (1|site) + (1|quad.unique), family = binomial, data = field.leaf.2016)
+Anova(m.prevalence2.full)
+
+#Multiple regression with canopy.height and density and random effect of site (using quad level data)
+m.prevalence.quad <- lmer(prevalence ~ canopy.height + density.decm + (1|site), data = field.quad)
+anova(m.prevalence.quad)
+
+#Multiple regression with canopy.height and density and a fixed blocking effect of site (using quad level data)
+m.prevalence.quad <- aov(prevalence ~ canopy.height + density.decm + site, data = field.quad) #density not significant so removed from model?
+anova(m.prevalence.quad)
+summary(m.prevalence.quad)
+shapiro.test(residuals(m.prevalence.quad)) #pass
+plot(m.prevalence.quad) #distribution looks ok
+hist(residuals(m.prevalence.quad), main = '')
+
+posthoc.prevalence.quad <- TukeyHSD(m.prevalence.quad)
+posthoc.prevalence.quad
+multcompLetters(posthoc.prevalence.quad$`site`[,"p adj"])
+
+##### USE THIS FOR RESULTS multiple regression with site as a blocking factor???
+##############################
 
 #summary stats
 field.lesion.prev <- field.leaf %>%
@@ -567,6 +647,7 @@ m.Dis3 <- glmer(cbind(lesion.present, lesion.absent) ~ length.cm + density.decm 
 summary(m.Dis3)
 
 AIC(m.Dis1, m.Dis2, m.Dis3)
+AICctab(logLik(m.Dis1), logLik(m.Dis2), logLik(m.Dis3), delta = T, weights = T)
 
 #making plot and figure out % increase in disease per cm
 #Plot length effect, hold density at 200 shoots/m2 and Epiphytes at 1.8 mg/cm2
@@ -613,12 +694,6 @@ Anova(m.prevalence) ##use this for P values (package = car)
 
 ###Density
 ```{r}
-##2016
-field.quad <- field.leaf %>%
-  filter(year == "2016") %>%
-  group_by(site, quad) %>%
-  summarize(shoot.m2 = mean(shoot.m2, na.rm = T), prevalence = sum(lesion.present)/(sum(lesion.present) + sum(lesion.absent)))
-
 p <- ggplot(field.quad, aes(x = site, y = shoot.m2)) + 
   #scale_fill_manual(values = c("white", "gray")) +
   geom_violin(position = position_dodge(1)) +
@@ -630,8 +705,10 @@ p
 
 plot(shoot.m2 ~ prevalence, field.quad)
 
-m.density <- aov(shoot.m2 ~ site, data = field.quad)
+m.density <- aov(density.decm ~ site, data = field.quad)
 anova(m.density) #no significant effects
+
+mean(field.leaf.2016$shoot.m2) #=461 shoots/m2
 ```
 
 ###Length
@@ -658,7 +735,7 @@ p <- ggplot(field.leaf.2016, aes(x = lesion.present.factor, y = length.cm)) +
 p
 
 m.length <- lmer(length.cm ~ site + (1|quad.unique), data = field.leaf.2016)
-summary(m.length) #significant effects of site and disease status (need to fix model to have site/quad as random effect?)
+summary(m.length) #significant effects of site and disease status
 lmerTest::anova(m.length)
 
 #posthoc tests
@@ -674,10 +751,44 @@ length.cld
 
 #summary statistics
 field.length.summary <- field.leaf.2016 %>%
-  group_by(lesion.present.factor) %>%
+  group_by(site) %>%
   summarize(length.mean = mean(length.cm, na.rm = T), length.se = se(length.cm, na.rm = T))
 
+#DC, NB, LP length
+(78.61+66.65+70.74)/3 #= 72
+
+#WB length = 104.39
+
 ```
+
+###leaf number
+```{r}
+m.leaf.number <- lmer(no.leaves ~ site + (1|quad.unique), data = field.leaf.2016)
+summary(m.leaf.number) #significant effects of site and disease status
+lmerTest::anova(m.leaf.number)
+
+#posthoc tests
+posthoc.leaf.number <- TukeyHSD(aov(no.leaves ~ site, data = field.leaf.2016))
+posthoc.leaf.number
+multcompLetters(posthoc.leaf.number$`site`[,"p adj"])
+
+summary(glht(m.leaf.number, mcp(site="Tukey")))
+
+leaf.number.lsmo <- lsmeans::lsmeans(m.leaf.number, ~site)
+leaf.number.cld <- cld(leaf.number.lsmo, adjust = 'tukey')
+leaf.number.cld
+
+#summary statistics
+field.leaf.number.summary <- field.leaf.2016 %>%
+  group_by(site) %>%
+  summarize(leaf.number.mean = mean(no.leaves, na.rm = T), leaf.number.se = se(no.leaves, na.rm = T))
+
+#WB leaf number 3.0 * 461 shoots
+#NB + LP leaf number 3.71 * 461 shoots
+#DC leaf number 4.12 * 461 shoots
+
+```
+
 
 ##Environmental Variables
 ```{r}
@@ -760,6 +871,75 @@ plot( points, cex=2, add=T, col = "orange" )
 plot( points, pch=1, cex=2, add=T, col = "orange" )
 ```
 
+
+#MODEL
+```{r}
+#Function for disease model
+solve.Disease.M <- function(t, y, parms) {
+  with(c(parms, y), {
+     y[y < 0] <- 0
+
+     #Integrate differential equations
+     dS <- ((a - m) * S + ai * I) - (ic * ct) * S * I
+     dI <- (ic * ct) * S * I - mi * I
+     #dS = The number of susceptible leaves
+     #dI = The number of infected leaves
+     #(1 - (S + I) / cc) carrying capacity equation
+     
+    return(list(c(dS, dI)))
+  })
+}
+
+#parameters (DC, LP, NB, WB)
+times <- seq(from = 0, to = 100, len = 101)
+a = c(0.53, 0.53, 0.53, 0.71) #production of susceptible leaves per susceptible leaf (MESOCOSM)
+          #leaves produced/leaf: healthy DC, NB, LP
+            #1.88/3.58 #= 0.53
+          #leaves produced/leaf: healthy WB
+            #1.88/2.64 #= 0.71
+ai = c(0.34, 0.34, 0.34, 0.46) #production of susceptible leaves per infected leaf (MESOCOSM)
+          #leaves produced/leaf: infected DC, NB, LP
+            #1.21/3.58 #=0.34
+          #leaves produced/leaf: infected WB
+            #1.21/2.64 #=0.46
+#cc = c(1899, 1710, 1710, 1383) #carrying capacity of leaves (FIELD)
+          #WB leaf number 3.0 * 461 shoots = 1383
+          #NB + LP leaf number 3.71 * 461 shoots = 1710
+          #DC leaf number 4.12 * 461 shoots = 1899
+ic = c(1, 1, 1, 1) #wasting disease infections (transission events) per contact between infected and susceptile leaves (MESOCOSM) *0.07?
+ct = c(0.0136728, 0.0123120, 0.0123120, 0.01443714) #contacts per time between infected and susceptible leaves (FIELD, density & length) *divided by 1*10^7 (should I account for density in this metric?? maybe no? ... yes I think I should account for compactness of shoots)
+            #DC, LP, NB length
+              #(78.61+66.65+70.74)/3 #= 72
+              #DC length*leaf.no*density = 149280.4 (site specific leaf.no)
+              #LP length*leaf.no*density = 
+              #NB length*leaf.no*density = 
+            #WB length = 104.39
+              #WB length*leaf.no*density = 144371.4
+m = c(0.36, 0.18, 0.18, 0.28) #mortality rate of susceptible leaves per susceptible leaf (MESOCOSM)
+        #DC healthy: 1.3/3.58 = 0.36; NB healthy: 0.64/3.58 = 0.18; LP healthy: 0.64/3.58 = 0.18; WB healthy: 0.73/2.64 = 0.28
+mi = c(0.56, 0.75, 0.51, 0.46)  #mortality rate of infected leaves per infected leaf (MESOCOSM)
+        #DC infected: 2/3.58 = 0.56; NB infected: 1.82/3.58 = 0.51; LP infected: 2.7/3.58 = 0.75; WB infected: 1.22/2.64 = 0.46
+
+r.T1 <- matrix(nrow = 101, ncol = 9, 0)
+
+#simulation (can adjust parameters for each site see oyster modeling project)
+for (n in 1:4) {
+  r.T1[,1] <- ode(time = times, parms = list(a = a[1], ai = ai[1], cc = cc[1], ic = ic[1], ct = ct[1], m = m[1], mi = mi[1]), y = c(S = 100, I = 1),  func = solve.Disease.M, method = "ode45")[,1]
+  r.T1[,n+1] <- ode(time = times, parms = list(a = a[n], ai = ai[n], cc = cc[n], ic = ic[n], ct = ct[n], m = m[n], mi = mi[n]), y = c(S = 10000, I = 1),  func = solve.Disease.M, method = "ode45")[,2]
+  r.T1[,n+5] <- ode(time = times, parms = list(a = a[n], ai = ai[n], cc = cc[n], ic = ic[n], ct = ct[n], m = m[n], mi = mi[n]), y = c(S = 10000, I = 1),  func = solve.Disease.M, method = "ode45")[,3]
+  }
+
+r.T1 <- data.frame(r.T1)
+
+prevalence <-c(r.T1[101,6]/(r.T1[101,2] + r.T1[101,6]), r.T1[101,7]/(r.T1[101,3] + r.T1[101,7]), r.T1[101,8]/(r.T1[101,4] + r.T1[101,8]), r.T1[101,9]/(r.T1[101,5] + r.T1[101,9]))
+prevalence
+
+plot((r.T1[,3]/(r.T1[,3] + r.T1[,2])) ~ r.T1[,1], t = "l",
+     ylim = c(0,1), ylab = "prevalence", xlab = "time", main = "LP")
+plot(r.T1[,2] ~ r.T1[,1], t = "l", ylim = c(0,3000), ylab = "number of individuals", xlab = "time", col = "green", main = "LP")
+lines(r.T1[,1], r.T1[,3], t = "l", col = "red")
+plot(r.T1[,2]+r.T1[,3] ~ r.T1[,1], t = "l", ylim = c(0,3000), ylab = "number of leaves", xlab = "time")
+```
 
 
 
