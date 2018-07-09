@@ -67,9 +67,9 @@ mesocosm.leaf$shoot.ID <- as.factor(mesocosm.leaf$shoot.ID)
 
 ## Shoot level responses
 mesocosm.shoot <- mesocosm.leaf %>%
-  select(c(month, year, mesocosm, vase, infection, site, experiment.day, no.leaves, no.leaves.lost, no.leaves.new, shoot.no, S1.total.length, S2.total.length, rhizome.length, ag.biomass, bg.biomass, shoot.notes)) %>%
+  dplyr::select(c(month, year, mesocosm, vase, infection, site, experiment.day, S1.no.leaves, no.leaves.lost, no.leaves.new, shoot.no, S1.total.length, S2.total.length, rhizome.length, ag.biomass, bg.biomass, shoot.notes)) %>%
   group_by(month, year, mesocosm, vase, infection, site, experiment.day) %>%
-  summarize(no.leaves = mean(no.leaves, na.rm = T), no.leaves.lost = mean(no.leaves.lost, na.rm = T), no.leaves.new = mean(no.leaves.new, na.rm = T), shoot.no = mean(shoot.no, na.rm = T), S1.total.length = mean(S1.total.length, na.rm = T), S2.total.length = mean(S2.total.length, na.rm = T), rhizome.length = mean(rhizome.length, na.rm = T), ag.biomass = mean(ag.biomass, na.rm = T), bg.biomass = mean(bg.biomass, na.rm = T))
+  summarize(S1.no.leaves = mean(S1.no.leaves, na.rm = T), no.leaves.lost = mean(no.leaves.lost, na.rm = T), no.leaves.new = mean(no.leaves.new, na.rm = T), shoot.no = mean(shoot.no, na.rm = T), S1.total.length = mean(S1.total.length, na.rm = T), S2.total.length = mean(S2.total.length, na.rm = T), rhizome.length = mean(rhizome.length, na.rm = T), ag.biomass = mean(ag.biomass, na.rm = T), bg.biomass = mean(bg.biomass, na.rm = T))
 
 mesocosm.shoot.initial <- mesocosm.shoot %>%
   subset(experiment.day == "0")
@@ -81,11 +81,11 @@ colnames(mesocosm.shoot.final) <- c("month", "year", "mesocosm", "vase", "infect
 
 mesocosm.shoot.temp <- merge(mesocosm.shoot.initial, mesocosm.shoot.final, by = c("month", "year", "mesocosm", "vase", "infection", "site"))
 
-mesocosm.shoot <-select(mesocosm.shoot.temp, c(month, year, mesocosm, vase, infection, site, no.leaves.initial, shoot.no.initial, shoot.no.final, S1.total.length.initial, S2.total.length.final, rhizome.length.initial, rhizome.length.final, ag.biomass.final, bg.biomass.final))
+mesocosm.shoot <- dplyr::select(mesocosm.shoot.temp, c(month, year, mesocosm, vase, infection, site, no.leaves.initial, shoot.no.initial, shoot.no.final, S1.total.length.initial, S2.total.length.final, rhizome.length.initial, rhizome.length.final, ag.biomass.final, bg.biomass.final))
 
-mesocosm.shoot.leaf.no.final.edit <- select(mesocosm.shoot.temp, c(month:site, no.leaves.final, no.leaves.lost.final, no.leaves.new.final, S1.total.length.final, S2.total.length.final, shoot.no.final))
-mesocosm.shoot.leaf.no.final.edit <- subset(mesocosm.shoot.leaf.no.final.edit, shoot.no.final != 0)
-mesocosm.shoot.leaf.no.final.edit <- select(mesocosm.shoot.leaf.no.final.edit, c(month:S1.total.length.final)) #removing final leaf number values of dead shoots
+mesocosm.shoot.leaf.no.final.edit <- dplyr::select(mesocosm.shoot.temp, c(month:site, no.leaves.final, no.leaves.lost.final, no.leaves.new.final, S1.total.length.final, S2.total.length.final, shoot.no.final))
+#mesocosm.shoot.leaf.no.final.edit <- subset(mesocosm.shoot.leaf.no.final.edit, shoot.no.final != 0)
+mesocosm.shoot.leaf.no.final.edit <- dplyr::select(mesocosm.shoot.leaf.no.final.edit, c(month:S1.total.length.final)) #removing final leaf number values of dead shoots
 
 mesocosm.shoot <- merge(mesocosm.shoot, mesocosm.shoot.leaf.no.final.edit, by = c("month", "year", "mesocosm", "vase", "infection", "site"), all.x = T)
 
@@ -299,8 +299,17 @@ p <- ggplot(mesocosm.shoot, aes(x = infection, y = no.leaves.new.final)) +
   theme_classic()
 p
 
+p <- ggplot(mesocosm.shoot, aes(x = site, y = no.leaves.new.final)) + 
+  #scale_fill_manual(values = c("white", "gray")) +
+  geom_violin(position = position_dodge(1)) +
+  geom_dotplot(binaxis = 'y', stackdir = 'center', position = position_dodge(1), dotsize  = 0.5) +
+  stat_summary(fun.y = mean, geom = "point", size = 3, color = "red", position = position_dodge(1)) +
+  labs(x = "Inoculation Treatment", y = "Number of New Leaves Produced") +
+  theme_classic()
+p
+
 m.new.leaves <- aov(no.leaves.new.final ~ site*infection + mesocosm, data = mesocosm.shoot)
-anova(m.new.leaves) #significant effect of infection (# of leaves intitial included as a covariate but not significant so removed)
+Anova(m.new.leaves) #significant effect of infection (# of leaves intitial included as a covariate but not significant so removed)
 shapiro.test(residuals(m.new.leaves)) #passed
 leveneTest(m.new.leaves) #passed
 plot(m.new.leaves) #distribution looks ok
@@ -308,11 +317,11 @@ hist(residuals(m.new.leaves), main = '') #residuals look pretty normal
 
 #MESOCOSM AS RANDOM EFFECT
 m.new.leaves <- lmer(no.leaves.new.final ~ site*infection + (1|mesocosm), data = mesocosm.shoot)
-anova(m.new.leaves)
+Anova(m.new.leaves)
 
 #Summary statistics
 leaf.production.means <- mesocosm.shoot %>%
-  group_by(infection) %>%
+  group_by(infection, site) %>%
   summarize(mean.new.leaves = mean(no.leaves.new.final, na.rm = T), SE.new.leaves = se(no.leaves.new.final, na.rm = T))
 
 #leaves produced/leaf: healthy DC, NB, LP
@@ -337,7 +346,7 @@ p <- ggplot(mesocosm.shoot, aes(x = site, y = no.leaves.lost.final, fill = infec
 p
 
 m.lost.leaves <- aov(no.leaves.lost.final ~ site*infection + mesocosm + no.leaves.initial, data = mesocosm.shoot)
-anova(m.lost.leaves) #significant effect of infection*site (# of leaves intitial included as a covariate)
+Anova(m.lost.leaves) #significant effect of infection*site (# of leaves intitial included as a covariate)
 shapiro.test(residuals(m.lost.leaves)) #pass
 leveneTest(m.lost.leaves) #pass
 plot(m.lost.leaves) #distribution looks ok
