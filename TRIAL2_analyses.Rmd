@@ -84,7 +84,7 @@ mesocosm.shoot.temp <- merge(mesocosm.shoot.initial, mesocosm.shoot.final, by = 
 mesocosm.shoot <- dplyr::select(mesocosm.shoot.temp, c(month, year, mesocosm, vase, infection, site, no.leaves.initial, shoot.no.initial, shoot.no.final, S1.total.length.initial, S2.total.length.final, rhizome.length.initial, rhizome.length.final, ag.biomass.final, bg.biomass.final))
 
 mesocosm.shoot.leaf.no.final.edit <- dplyr::select(mesocosm.shoot.temp, c(month:site, no.leaves.final, no.leaves.lost.final, no.leaves.new.final, S1.total.length.final, S2.total.length.final, shoot.no.final))
-#mesocosm.shoot.leaf.no.final.edit <- subset(mesocosm.shoot.leaf.no.final.edit, shoot.no.final != 0)
+mesocosm.shoot.leaf.no.final.edit <- subset(mesocosm.shoot.leaf.no.final.edit,   vase != "81") #excluded dead shoot from control
 mesocosm.shoot.leaf.no.final.edit <- dplyr::select(mesocosm.shoot.leaf.no.final.edit, c(month:S1.total.length.final)) #removing final leaf number values of dead shoots
 
 mesocosm.shoot <- merge(mesocosm.shoot, mesocosm.shoot.leaf.no.final.edit, by = c("month", "year", "mesocosm", "vase", "infection", "site"), all.x = T)
@@ -225,7 +225,7 @@ m.survival <- glmer(cbind(survival, mortality) ~ site*infection + (1|mesocosm), 
 anova(m.survival)
 
 #summary stats
-prop.mortality <- subset(mesocosm.shoot, infection == "N")
+prop.mortality <- subset(mesocosm.shoot, infection == "Y")
 sum(prop.mortality$survival)
 
 ```
@@ -308,7 +308,7 @@ p <- ggplot(mesocosm.shoot, aes(x = site, y = no.leaves.new.final)) +
   theme_classic()
 p
 
-m.new.leaves <- aov(no.leaves.new.final ~ site*infection + mesocosm, data = mesocosm.shoot)
+m.new.leaves <- aov(no.leaves.new.final ~ site*infection + mesocosm + no.leaves.initial, data = mesocosm.shoot)
 Anova(m.new.leaves) #significant effect of infection (# of leaves intitial included as a covariate but not significant so removed)
 shapiro.test(residuals(m.new.leaves)) #passed
 leveneTest(m.new.leaves) #passed
@@ -739,6 +739,11 @@ p
 m.leaf.density <- aov(leaf.density.decm ~ site, data = field.quad)
 Anova(m.leaf.density) #marginal effect of site
 
+#Summary statistics
+field.leaf.density.means <- field.quad %>%
+  group_by(site) %>%
+  summarize(mean.leaves.m2 = mean(leaf.density.decm*100, na.rm = T), SE.leaves.m2 = se(leaf.density.decm*100, na.rm = T))
+
 ```
 
 ###Length
@@ -928,27 +933,24 @@ solve.Disease.M <- function(t, y, parms) {
 
 #parameters (DC, LP, NB, WB)
 times <- seq(from = 0, to = 1000, len = 1001)
-A = c((1.88 / 28) * 461, (1.88 / 28) * 461, (1.88 / 28) * 461, (1.88 / 28) * 461) #production of susceptible leaves per 1 m2 quadrat per day from healthy shoots (MESOCOSM & FIELD)
-  #1.88 = production of susceptible leaves per healthy shoot (MESOCOSM)
+A = c((2.2 / 28) * 461, (2.2 / 28) * 461, ( 2.2/ 28) * 461, (2.2 / 28) * 461) #production of susceptible leaves per 1 m2 quadrat per day from healthy shoots (MESOCOSM & FIELD)
+  #DC:1.9, LP:2.09, NB:3.09, WB:1.82 = production of susceptible leaves per healthy shoot (MESOCOSM)
   #461 = Shoots per 1m2 (FIELD)
 #a = c(0.53, 0.53, 0.53, 0.71) #production of susceptible leaves per susceptible leaf (MESOCOSM)
           #leaves produced/leaf: healthy DC, NB, LP
             #1.88/3.58 #= 0.53
           #leaves produced/leaf: healthy WB
             #1.88/2.64 #= 0.71
-Ai = c((1.21 / 28) * 461, (1.21 / 28) * 461, (1.21 / 28) * 461, (1.21 / 28) * 461) #production of susceptible leaves per 1 m2 quadrat per day from infected shoots (MESOCOSM)
+Ai = c((1.18 / 28) * 461, (1.18 / 28) * 461, (1.18 / 28) * 461, (1.18 / 28) * 461) #production of susceptible leaves per 1 m2 quadrat per day from infected shoots (MESOCOSM) DC:1.09, LP:1.27, NB:1.27, WB:1.09
 #ai = c(0.34, 0.34, 0.34, 0.46) #production of susceptible leaves per infected leaf (MESOCOSM)
-          #leaves produced/leaf: infected DC, NB, LP
-            #1.21/3.58 #=0.34
-          #leaves produced/leaf: infected WB
-            #1.21/2.64 #=0.46
+          #leaves produced/leaf: DC, LP, NB, WB
 #cc = c(1899, 1710, 1710, 1383) #carrying capacity of leaves (FIELD)
           #WB leaf number 3.0 * 461 shoots = 1383
           #NB + LP leaf number 3.71 * 461 shoots = 1710
           #DC leaf number 4.12 * 461 shoots = 1899
 ic = c(1, 1, 1, 1) #wasting disease infections (transission events) per contact between infected and susceptile leaves (MESOCOSM) *0.07?
 L = c(78.6, 68.7, 68.7, 104.4) #Leaf length
-D = c(461, 461, 461, 461) #Density of shoots (shoots/m2) accounts for differential spacing of shoots
+D = c(461, 461, 461, 461) #Density of shoots (shoots/m2) accounts for differential spacing of leaves
 z = c(9*10^-10, 9*10^-10, 9*10^-10, 9*10^-10) #transmission scaling coefficient
 #K = c(461*4.14, 461*3.71, 461*3.71, 461*3) #carrying capacity of leaves
 #D = c(461, 461, 461, 461) #Shoot density
@@ -960,10 +962,10 @@ z = c(9*10^-10, 9*10^-10, 9*10^-10, 9*10^-10) #transmission scaling coefficient
               #NB length*leaf.no*density = 72 * 3.71 * 461 = 123142.3
             #WB length = 104.39
               #WB length*leaf.no*density = 104.4 * 3 * 461 = 144385.2
-M = c((1.19 / 28) * 461, (0.91 / 28) * 461, (0.91 / 28) * 461, (0.91 / 28) * 461) #mortality of leaves per 1 m2 quadrat per day from healthy shoots (MESOCOSM and FIELD)
+M = c((1.3 / 28) * 461, (0.64 / 28) * 461, (0.64 / 28) * 461, (0.73 / 28) * 461) #mortality of leaves per 1 m2 quadrat per day from healthy shoots (MESOCOSM and FIELD)
 #m = c(0.36, 0.18, 0.18, 0.28) #mortality rate of susceptible leaves per susceptible leaf (MESOCOSM)
         #DC healthy: 1.3/3.58 = 0.36; NB healthy: 0.64/3.58 = 0.18; LP healthy: 0.64/3.58 = 0.18; WB healthy: 0.73/2.64 = 0.28
-Mi = c((1.81 / 28) * 461, (2.17 / 28) * 461, (1.81 / 28) * 461, (1.19 / 28) * 461) #mortality of leaves per 1 m2 quadrat per day from diseased shoots (MESOCOSM AND FIELD)
+Mi = c((2.18 / 28) * 461, (2.64 / 28) * 461, (1.82 / 28) * 461, (1.18 / 28) * 461) #mortality of leaves per 1 m2 quadrat per day from diseased shoots (MESOCOSM AND FIELD)
 #mi = c(0.56, 0.75, 0.51, 0.46)  #mortality rate of infected leaves per infected leaf (MESOCOSM)
         #DC infected: 2/3.58 = 0.56; NB infected: 1.82/3.58 = 0.51; LP infected: 2.7/3.58 = 0.75; WB infected: 1.22/2.64 = 0.46
 
@@ -980,7 +982,7 @@ for (n in 1:4) {
 
 r.T1 <- data.frame(r.T1)
 
-prevalence <-c(r.T1[60,6]/(r.T1[60,2] + r.T1[60,6]), r.T1[60,7]/(r.T1[60,3] + r.T1[60,7]), r.T1[60,8]/(r.T1[60,4] + r.T1[60,8]), r.T1[60,9]/(r.T1[60,5] + r.T1[60,9]))
+prevalence <-c(r.T1[1001,6]/(r.T1[1001,2] + r.T1[1001,6]), r.T1[1001,7]/(r.T1[1001,3] + r.T1[1001,7]), r.T1[1001,8]/(r.T1[1001,4] + r.T1[1001,8]), r.T1[1001,9]/(r.T1[1001,5] + r.T1[1001,9]))
 prevalence
 
 #parameters (DC, LP, NB, WB)
@@ -990,10 +992,10 @@ lines(r.T1[,1], r.T1[,7]/(r.T1[,3] + r.T1[,7]), t = "l", col = "darkgreen")
 lines(r.T1[,1], r.T1[,8]/(r.T1[,4] + r.T1[,8]), t = "l", col = "orange")
 lines(r.T1[,1], r.T1[,9]/(r.T1[,5] + r.T1[,9]), t = "l", col = "blue")
 
-plot((r.T1[,2] + r.T1[,6])/404 ~ r.T1[,1], t = "l", ylim = c(0,10), ylab = "leaf number/shoot", xlab = "time", col = "purple", main = "")
-lines(r.T1[,1], (r.T1[,3] + r.T1[,7])/434, t = "l", col = "darkgreen")
-lines(r.T1[,1], (r.T1[,4] + r.T1[,8])/559, t = "l", col = "orange")
-lines(r.T1[,1], (r.T1[,5] + r.T1[,9])/448, t = "l", col = "blue")
+plot((r.T1[,2] + r.T1[,6])/461 ~ r.T1[,1], t = "l", ylim = c(0,10), ylab = "leaf number/shoot", xlab = "time", col = "purple", main = "")
+lines(r.T1[,1], (r.T1[,3] + r.T1[,7])/461, t = "l", col = "darkgreen")
+lines(r.T1[,1], (r.T1[,4] + r.T1[,8])/461, t = "l", col = "orange")
+lines(r.T1[,1], (r.T1[,5] + r.T1[,9])/461, t = "l", col = "blue")
 
 #plot(r.T1[,2]+r.T1[,3] ~ r.T1[,1], t = "l", ylim = c(0,3000), ylab = "number of leaves", xlab = "time")
 ```
