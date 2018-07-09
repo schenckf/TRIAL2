@@ -183,6 +183,8 @@ field.quad <- field.leaf %>%
   group_by(site, quad) %>%
   summarize(density.decm = mean(shoot.m2, na.rm = T)/100, canopy.height = mean(length.cm, na.rm = T), prevalence = sum(lesion.present)/(sum(lesion.present) + sum(lesion.absent)), leaf.no = mean(no.leaves, na.rm = T))
 
+field.quad$leaf.density.decm <- field.quad$density.decm * field.quad$leaf.no
+
 ## Environmental Data
 #d1.env <- read.csv("LabyInoc_T2_ZM_ENV_23JAN2017.csv")
 #dfull.env <- read.csv("DC_Temp_2016_Complete.csv")
@@ -714,6 +716,20 @@ field.density.means <- field.leaf.2016 %>%
   summarize(mean.shoot.m2 = mean(shoot.m2, na.rm = T), SE.shoot.m2 = se(shoot.m2, na.rm = T))
 
 mean(field.leaf.2016$shoot.m2) #=461 shoots/m2
+
+#Leaf Density 
+p <- ggplot(field.quad, aes(x = site, y = leaf.density.decm*100)) + 
+  #scale_fill_manual(values = c("white", "gray")) +
+  geom_violin(position = position_dodge(1)) +
+  geom_dotplot(binaxis = 'y', stackdir = 'center', position = position_dodge(1), dotsize  = 0.5) +
+  stat_summary(fun.y = mean, geom = "point", size = 3, color = "red", position = position_dodge(1)) +
+  labs(x = "Source Site", y = "Eelgrass leaf density leaves/m2") +
+  theme_classic()
+p
+
+m.leaf.density <- aov(leaf.density.decm ~ site, data = field.quad)
+Anova(m.leaf.density) #marginal effect of site
+
 ```
 
 ###Length
