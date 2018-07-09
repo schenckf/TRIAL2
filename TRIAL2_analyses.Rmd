@@ -181,7 +181,7 @@ str(field.leaf)
 field.quad <- field.leaf %>%
   filter(year == "2016") %>%
   group_by(site, quad) %>%
-  summarize(density.decm = mean(shoot.m2, na.rm = T)/100, canopy.height = mean(length.cm, na.rm = T), prevalence = sum(lesion.present)/(sum(lesion.present) + sum(lesion.absent)))
+  summarize(density.decm = mean(shoot.m2, na.rm = T)/100, canopy.height = mean(length.cm, na.rm = T), prevalence = sum(lesion.present)/(sum(lesion.present) + sum(lesion.absent)), leaf.no = mean(no.leaves, na.rm = T))
 
 ## Environmental Data
 #d1.env <- read.csv("LabyInoc_T2_ZM_ENV_23JAN2017.csv")
@@ -249,7 +249,7 @@ summary(m.new.shoots)
 
 summary(glht(m.new.shoots, mcp(site = "Tukey"))) ##ERRORS
 
-prop.new.shoot <- subset(mesocosm.shoot, site == "LP")
+prop.new.shoot <- subset(mesocosm.shoot, infection == "Y")
 sum(prop.new.shoot$shoot.production, na.rm = T)
 ```
 
