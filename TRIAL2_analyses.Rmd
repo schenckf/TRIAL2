@@ -558,12 +558,12 @@ rhizome.growth.means <- mesocosm.shoot %>%
 lesion.pc.d28 <- mesocosm.leaf %>%
   filter(experiment.day == "28" & exp.leaf.no != "-2" & exp.leaf.no != "4" & exp.leaf.no != "5")
 
-p <- ggplot(filter(mesocosm.leaf, experiment.day == "28" & exp.leaf.no != "-2" & exp.leaf.no != "4" & exp.leaf.no != "5" ), aes(x = exp.leaf.no, y = lesion.pc, fill = infection)) + 
-  scale_fill_manual(values = c("white", "gray")) +
+p <- ggplot(filter(mesocosm.leaf, experiment.day == "28" & infection == "Y"), aes(x = current.leaf.no, y = lesion.pc, fill = site)) + #& exp.leaf.no != "-2" & exp.leaf.no != "4" & exp.leaf.no != "5" 
+  scale_fill_manual(values = c("white", "gray80", "gray20", "black")) +
   geom_violin(position = position_dodge(1)) +
   geom_dotplot(binaxis = 'y', stackdir = 'center', position = position_dodge(1), dotsize  = 0.5) +
   stat_summary(fun.y = mean, geom = "point", size = 3, color = "red", position = position_dodge(1)) +
-  labs(x = "experimental leaf no.", y = "lesion percent cover") +
+  labs(x = "current leaf no.", y = "lesion percent cover") +
   ylim(0,100) +
   theme_classic()
 p
