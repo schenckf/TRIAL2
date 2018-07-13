@@ -84,7 +84,7 @@ mesocosm.shoot.temp <- merge(mesocosm.shoot.initial, mesocosm.shoot.final, by = 
 mesocosm.shoot <- dplyr::select(mesocosm.shoot.temp, c(month, year, mesocosm, vase, infection, site, no.leaves.initial, shoot.no.initial, shoot.no.final, S1.total.length.initial, S2.total.length.final, rhizome.length.initial, rhizome.length.final, ag.biomass.final, bg.biomass.final))
 
 mesocosm.shoot.leaf.no.final.edit <- dplyr::select(mesocosm.shoot.temp, c(month:site, no.leaves.final, no.leaves.lost.final, no.leaves.new.final, S1.total.length.final, S2.total.length.final, shoot.no.final))
-mesocosm.shoot.leaf.no.final.edit <- subset(mesocosm.shoot.leaf.no.final.edit,   vase != "81") #excluded dead shoot from control
+#mesocosm.shoot.leaf.no.final.edit <- subset(mesocosm.shoot.leaf.no.final.edit,   vase != "81") #excluded dead shoot from control
 mesocosm.shoot.leaf.no.final.edit <- dplyr::select(mesocosm.shoot.leaf.no.final.edit, c(month:S1.total.length.final)) #removing final leaf number values of dead shoots
 
 mesocosm.shoot <- merge(mesocosm.shoot, mesocosm.shoot.leaf.no.final.edit, by = c("month", "year", "mesocosm", "vase", "infection", "site"), all.x = T)
@@ -154,6 +154,21 @@ for (n in 1:88) {
 ##Rhizome growth
 mesocosm.shoot$rhizome.growth <- (mesocosm.shoot$rhizome.length.final - mesocosm.shoot$rhizome.length.initial)/28
 
+##Mesocosm lesions
+mesocosm.lesions <- mesocosm.leaf %>%
+  filter(shoot.no != 0 & experiment.day == 28) %>%
+  dplyr::select(c(month, year, mesocosm, vase, infection, site, experiment.day, S1.no.leaves, lesion.pc, lesion.presence, lesion.absence, notes)) %>%
+  group_by(month, year, mesocosm, vase, infection, site, experiment.day) %>%
+  summarize(S1.no.leaves = mean(S1.no.leaves, na.rm = T), lesion.pc = mean(lesion.pc, na.rm = T), lesion.presence = sum(lesion.presence, na.rm = T), lesion.absence = sum(lesion.absence, na.rm = T))
+
+mesocosm.lesions$infected <- 0
+for (n in 1:length(mesocosm.lesions$infected)) {
+  if (mesocosm.lesions$lesion.presence[n] >= 1) {
+    mesocosm.lesions$infected[n] <- 1
+  } else {
+   mesocosm.lesions$infected[n] <- 0
+  }
+}
 
 ## Field Data
 field.leaf <- read.csv("TRIAL2_field.csv")
@@ -290,12 +305,12 @@ leaf.initial.means <- mesocosm.shoot %>%
 
 ##Leaf production
 ```{r}
-p <- ggplot(mesocosm.shoot, aes(x = infection, y = no.leaves.new.final)) + 
-  #scale_fill_manual(values = c("white", "gray")) +
+p <- ggplot(mesocosm.shoot, aes(x = site, y = no.leaves.new.final, fill = infection)) + 
+  scale_fill_manual(values = c("white", "gray")) +
   geom_violin(position = position_dodge(1)) +
   geom_dotplot(binaxis = 'y', stackdir = 'center', position = position_dodge(1), dotsize  = 0.5) +
   stat_summary(fun.y = mean, geom = "point", size = 3, color = "red", position = position_dodge(1)) +
-  labs(x = "Inoculation Treatment", y = "Number of New Leaves Produced") +
+  labs(x = "site", y = "Number of New Leaves Produced") +
   theme_classic()
 p
 
@@ -558,13 +573,13 @@ rhizome.growth.means <- mesocosm.shoot %>%
 lesion.pc.d28 <- mesocosm.leaf %>%
   filter(experiment.day == "28" & exp.leaf.no != "-2" & exp.leaf.no != "4" & exp.leaf.no != "5")
 
-p <- ggplot(filter(mesocosm.leaf, experiment.day == "28" & infection == "Y"), aes(x = current.leaf.no, y = lesion.pc, fill = site)) + #& exp.leaf.no != "-2" & exp.leaf.no != "4" & exp.leaf.no != "5" 
+p <- ggplot(filter(mesocosm.leaf, experiment.day == "28" & infection == "Y" & shoot.no != 0), aes(x = current.leaf.no, y = lesion.presence, fill = site)) + #& exp.leaf.no != "-2" & exp.leaf.no != "4" & exp.leaf.no != "5" 
   scale_fill_manual(values = c("white", "gray80", "gray20", "black")) +
-  geom_violin(position = position_dodge(1)) +
+  #geom_violin(position = position_dodge(1)) +
   geom_dotplot(binaxis = 'y', stackdir = 'center', position = position_dodge(1), dotsize  = 0.5) +
-  stat_summary(fun.y = mean, geom = "point", size = 3, color = "red", position = position_dodge(1)) +
+  stat_summary(fun.y = mean, geom = "point", size = 1, color = "red", position = position_dodge(1)) +
   labs(x = "current leaf no.", y = "lesion percent cover") +
-  ylim(0,100) +
+  ylim(0,1) +
   theme_classic()
 p
 
@@ -585,6 +600,50 @@ multcompLetters(posthoc.d28.lesions$`infection:exp.leaf.no`[,"p adj"])
 lesion.pc.d28.means <- lesion.pc.d28 %>%
   group_by(exp.leaf.no, infection) %>%
   summarize(mean.lesion.pc = mean(lesion.pc, na.rm= T), SE.lesion.pc = se(lesion.pc, na.rm = T))
+
+
+##Proportion of leaves infected
+p <- ggplot(mesocosm.lesions, aes(x = site, y = lesion.presence/(lesion.presence+lesion.absence), fill = infection)) +
+  scale_fill_manual(values = c("white", "gray")) +
+  #geom_violin(position = position_dodge(1)) +
+  geom_dotplot(binaxis = 'y', stackdir = 'center', position = position_dodge(1), dotsize  = 0.5) +
+  stat_summary(fun.y = mean, geom = "point", size = 1, color = "red", position = position_dodge(1)) +
+  labs(x = "site", y = "proportion of leaves infected") +
+  ylim(0,1) +
+  theme_classic()
+p
+
+
+m.severity <- glm(cbind(lesion.presence, lesion.absence) ~ site, family = binomial, data = filter(mesocosm.lesions, infection == "N"))
+anova(m.severity, test = "LR") #significant effect of site
+Anova(m.severity, test = "LR") ##use this for P values (package = car)
+summary(m.severity)
+
+#how to post-hoc?
+
+
+##Proportion of shoots infected in healthy treatment
+p <- ggplot(filter(mesocosm.lesions, experiment.day == "28" & infection == "N"), aes(x = site, y = infected, fill = site)) + #& exp.leaf.no != "-2" & exp.leaf.no != "4" & exp.leaf.no != "5" 
+  scale_fill_manual(values = c("white", "gray80", "gray20", "black")) +
+  #geom_violin(position = position_dodge(1)) +
+  geom_dotplot(binaxis = 'y', stackdir = 'center', position = position_dodge(1), dotsize  = 0.5) +
+  stat_summary(fun.y = mean, geom = "point", size = 1, color = "red", position = position_dodge(1)) +
+  labs(x = "site.", y = "infected") +
+  ylim(0,1) +
+  theme_classic()
+p
+
+#Lesion percent cover means
+p <- ggplot(mesocosm.lesions, aes(x = site, y = lesion.pc, fill = infection)) +
+  scale_fill_manual(values = c("white", "gray")) +
+  #geom_violin(position = position_dodge(1)) +
+  geom_dotplot(binaxis = 'y', stackdir = 'center', position = position_dodge(1), dotsize  = 0.5) +
+  stat_summary(fun.y = mean, geom = "point", size = 1, color = "red", position = position_dodge(1)) +
+  labs(x = "site", y = "Mean lesion percent cover per shoot") +
+  ylim(0,100) +
+  theme_classic()
+p
+
 ```
 
 #FIELD
