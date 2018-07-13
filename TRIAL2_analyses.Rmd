@@ -65,6 +65,19 @@ mesocosm.leaf$vase <- as.factor(mesocosm.leaf$vase)
 mesocosm.leaf$shoot.ID <- paste(mesocosm.leaf$site, mesocosm.leaf$no.)
 mesocosm.leaf$shoot.ID <- as.factor(mesocosm.leaf$shoot.ID)
 
+mesocosm.leaf$field.prevalence <- 0
+for (n in 1:length(mesocosm.leaf$site)) {
+  if (mesocosm.leaf$site[n] == "LP")
+  {mesocosm.leaf$field.prevalence[n] = 0.29
+  }else if (mesocosm.leaf$site[n] == "NB")
+  {mesocosm.leaf$field.prevalence[n] = 0.47
+  } else if (mesocosm.leaf$site[n] == "DC")
+  {mesocosm.leaf$field.prevalence[n] = 0.61
+  }  else {
+    mesocosm.leaf$field.prevalence[n] = 0.69
+    }
+}
+
 ## Shoot level responses
 mesocosm.shoot <- mesocosm.leaf %>%
   dplyr::select(c(month, year, mesocosm, vase, infection, site, experiment.day, S1.no.leaves, no.leaves.lost, no.leaves.new, shoot.no, S1.total.length, S2.total.length, rhizome.length, ag.biomass, bg.biomass, shoot.notes)) %>%
@@ -181,7 +194,7 @@ field.leaf <- field.leaf %>%
 
 field.leaf$lesion.present <- NA
 
-for (n in 1:1074) {
+for (n in 1:length(field.leaf)) {
   if (field.leaf$lesion.pc.2[n] <= 0) {
     field.leaf$lesion.present[n] <- 0
     } else {field.leaf$lesion.present[n] <- 1
@@ -189,6 +202,8 @@ for (n in 1:1074) {
 }
 
 field.leaf$lesion.absent <- 1-field.leaf$lesion.present
+
+field.leaf$quad.unique <- paste(field.leaf$site, field.leaf$quad, sep = "_")
   
 str(field.leaf)
 
@@ -569,37 +584,21 @@ rhizome.growth.means <- mesocosm.shoot %>%
 
 ##Lesion Percent cover
 ```{r}
-#DAY28
-lesion.pc.d28 <- mesocosm.leaf %>%
-  filter(experiment.day == "28" & exp.leaf.no != "-2" & exp.leaf.no != "4" & exp.leaf.no != "5")
-
-p <- ggplot(filter(mesocosm.leaf, experiment.day == "28" & infection == "Y" & shoot.no != 0), aes(x = current.leaf.no, y = lesion.presence, fill = site)) + #& exp.leaf.no != "-2" & exp.leaf.no != "4" & exp.leaf.no != "5" 
-  scale_fill_manual(values = c("white", "gray80", "gray20", "black")) +
+#proportion of exp leaf 0 infected (leaves produced during exp.)
+p <- ggplot(filter(mesocosm.leaf, experiment.day == "28" & infection == "Y" & shoot.no != 0 & exp.leaf.no != "1" & exp.leaf.no != "2" & exp.leaf.no != "3" & exp.leaf.no != "4" & exp.leaf.no != "5"), aes(x = field.prevalence, y = lesion.presence, fill = site)) + #& exp.leaf.no != "-2" & exp.leaf.no != "4" & exp.leaf.no != "5" 
+  scale_fill_manual(values = c("black", "gray80", "gray30", "white")) +
   #geom_violin(position = position_dodge(1)) +
-  geom_dotplot(binaxis = 'y', stackdir = 'center', position = position_dodge(1), dotsize  = 0.5) +
-  stat_summary(fun.y = mean, geom = "point", size = 1, color = "red", position = position_dodge(1)) +
-  labs(x = "current leaf no.", y = "lesion percent cover") +
+  geom_dotplot(binaxis = 'y', stackdir = 'center', position = position_dodge(0), dotsize  = 0.5) +
+  stat_summary(fun.y = mean, geom = "point", size = 1, color = "red", position = position_dodge(0)) +
+  labs(x = "Field Prevalence", y = "lesion present") +
   ylim(0,1) +
+  xlim (0,1) +
   theme_classic()
 p
 
-m.lesion.pc.d28.all <- aov(lesion.pc ~ infection*site*exp.leaf.no + mesocosm + shoot.ID, data = filter(mesocosm.leaf, experiment.day == "28" & exp.leaf.no !="-2" & exp.leaf.no != "4" & exp.leaf.no != "5")) ##Including leaves with 0% infection, exclude leaves 4 and 5 because of lack of replication across sites, lesion.pc.y not significant so removed from model
-anova(m.lesion.pc.d28.all) #significant interaction of infection and leaf number
-shapiro.test(residuals(m.lesion.pc.d28.all)) #fail
-leveneTest(m.lesion.pc.d28.all) #fail, run on model without shoot.id or mesocosm
-plot(m.lesion.pc.d28.all) #does not look good
-hist(residuals(m.lesion.pc.d28.all), main = '') #residuals look pretty normal
-
-
-
-posthoc.d28.lesions <- TukeyHSD(aov(lesion.pc ~ infection*site*exp.leaf.no + mesocosm + shoot.ID, data = filter(mesocosm.leaf, experiment.day == "28" & exp.leaf.no != "-2" & exp.leaf.no !="4" & exp.leaf.no != "5")))
-posthoc.d28.lesions
-multcompLetters(posthoc.d28.lesions$`infection:exp.leaf.no`[,"p adj"])
-
-#summary statistics
-lesion.pc.d28.means <- lesion.pc.d28 %>%
-  group_by(exp.leaf.no, infection) %>%
-  summarize(mean.lesion.pc = mean(lesion.pc, na.rm= T), SE.lesion.pc = se(lesion.pc, na.rm = T))
+m.severity.L1 <- glm(cbind(lesion.presence, lesion.absence) ~ field.prevalence, family = binomial, data = filter(mesocosm.leaf, experiment.day == "28" & infection == "Y" & shoot.no != 0 & exp.leaf.no != "1" & exp.leaf.no != "2" & exp.leaf.no != "3" & exp.leaf.no != "4" & exp.leaf.no != "5"))
+Anova(m.severity.L1, test = "LR") ##use this for P values (package = car)
+summary(m.severity)
 
 
 ##Proportion of leaves infected
@@ -614,7 +613,7 @@ p <- ggplot(mesocosm.lesions, aes(x = site, y = lesion.presence/(lesion.presence
 p
 
 
-m.severity <- glm(cbind(lesion.presence, lesion.absence) ~ site, family = binomial, data = filter(mesocosm.lesions, infection == "N"))
+m.severity <- glm(cbind(lesion.presence, lesion.absence) ~ site, family = binomial, data = filter(mesocosm.lesions, infection == "Y"))
 anova(m.severity, test = "LR") #significant effect of site
 Anova(m.severity, test = "LR") ##use this for P values (package = car)
 summary(m.severity)
@@ -644,6 +643,26 @@ p <- ggplot(mesocosm.lesions, aes(x = site, y = lesion.pc, fill = infection)) +
   theme_classic()
 p
 
+m.lesion.pc.d28.all <- aov(lesion.pc ~ infsite + mesocosm + shoot.ID, data = filter(mesocosm.leaf, experiment.day == "28" & exp.leaf.no !="-2" & exp.leaf.no != "4" & exp.leaf.no != "5")) ##Including leaves with 0% infection, exclude leaves 4 and 5 because of lack of replication across sites, lesion.pc.y not significant so removed from model
+anova(m.lesion.pc.d28.all) #significant interaction of infection and leaf number
+shapiro.test(residuals(m.lesion.pc.d28.all)) #fail
+leveneTest(m.lesion.pc.d28.all) #fail, run on model without shoot.id or mesocosm
+plot(m.lesion.pc.d28.all) #does not look good
+hist(residuals(m.lesion.pc.d28.all), main = '') #residuals look pretty normal
+
+
+
+posthoc.d28.lesions <- TukeyHSD(aov(lesion.pc ~ infection*site*exp.leaf.no + mesocosm + shoot.ID, data = filter(mesocosm.leaf, experiment.day == "28" & exp.leaf.no != "-2" & exp.leaf.no !="4" & exp.leaf.no != "5")))
+posthoc.d28.lesions
+multcompLetters(posthoc.d28.lesions$`infection:exp.leaf.no`[,"p adj"])
+
+#summary statistics
+lesion.pc.d28.means <- lesion.pc.d28 %>%
+  group_by(exp.leaf.no, infection) %>%
+  summarize(mean.lesion.pc = mean(lesion.pc, na.rm= T), SE.lesion.pc = se(lesion.pc, na.rm = T))
+
+
+
 ```
 
 #FIELD
@@ -658,8 +677,6 @@ p <- ggplot(filter(field.leaf, year == "2016"), aes(x = site, y = lesion.present
   labs(x = "Source Site", y = "Proportion seagrass infected") +
   theme_classic()
 p
-
-field.leaf$quad.unique <- paste(field.leaf$site, field.leaf$quad, sep = "_")
 
 #prevalence by site with quad within site as a random variable
 m.prevalence <- glmer(cbind(lesion.present, lesion.absent) ~ site + (1|quad.unique), family = binomial, data = filter(field.leaf, year == "2016"))
