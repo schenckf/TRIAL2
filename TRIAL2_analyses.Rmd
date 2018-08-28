@@ -6,7 +6,7 @@ output: pdf_document
 ---
 
 #Packages Library
-```{r Packages Library}
+```{r eval = FALSE, echo = FALSE}
 #Data manipulation and plotting packages
 library (dplyr)
 library(tidyr)
@@ -22,7 +22,8 @@ library(bbmle)
 library(car) #P values for glm
 library(multcomp) #Tukey tests
 library(multcompView) #Tukey tests
-
+library(survival) #survival analyses
+library(survminer)
 
 
 #Site mapping packages
@@ -49,7 +50,7 @@ library(deSolve)
 ```
 
 #uploading data
-```{r Data Upload}
+```{r eval = FALSE, echo = FALSE}
 ##Mesocosm
 mesocosm.leaf <- read.csv("TRIAL2_mesocosm.csv") ##old name = d1
 
@@ -61,6 +62,8 @@ mesocosm.leaf$exp.leaf.no <- as.factor(mesocosm.leaf$exp.leaf.no)
 mesocosm.leaf$current.leaf.no <- as.factor(mesocosm.leaf$current.leaf.no)
 mesocosm.leaf$mesocosm <- as.factor(mesocosm.leaf$mesocosm)
 mesocosm.leaf$vase <- as.factor(mesocosm.leaf$vase)
+mesocosm.leaf$exp.day.appeared <- as.numeric(mesocosm.leaf$exp.day.appeared)
+mesocosm.leaf$lesion.presence.factor <- as.factor(mesocosm.leaf$lesion.presence)
 
 mesocosm.leaf$shoot.ID <- paste(mesocosm.leaf$site, mesocosm.leaf$no.)
 mesocosm.leaf$shoot.ID <- as.factor(mesocosm.leaf$shoot.ID)
@@ -80,15 +83,17 @@ for (n in 1:length(mesocosm.leaf$site)) {
 
 ## Shoot level responses
 mesocosm.shoot <- mesocosm.leaf %>%
-  dplyr::select(c(month, year, mesocosm, vase, infection, site, experiment.day, S1.no.leaves, no.leaves.lost, no.leaves.new, shoot.no, S1.total.length, S2.total.length, rhizome.length, ag.biomass, bg.biomass, shoot.notes)) %>%
+  dplyr::select(c(month, year, mesocosm, vase, infection, site, experiment.day, S1.no.leaves, no.leaves.lost, no.leaves.new, shoot.no, S1.total.length, S2.total.length, rhizome.length, ag.biomass, bg.biomass, mortality.day, stat, shoot.notes)) %>%
   group_by(month, year, mesocosm, vase, infection, site, experiment.day) %>%
-  summarize(S1.no.leaves = mean(S1.no.leaves, na.rm = T), no.leaves.lost = mean(no.leaves.lost, na.rm = T), no.leaves.new = mean(no.leaves.new, na.rm = T), shoot.no = mean(shoot.no, na.rm = T), S1.total.length = mean(S1.total.length, na.rm = T), S2.total.length = mean(S2.total.length, na.rm = T), rhizome.length = mean(rhizome.length, na.rm = T), ag.biomass = mean(ag.biomass, na.rm = T), bg.biomass = mean(bg.biomass, na.rm = T))
+  summarize(S1.no.leaves = mean(S1.no.leaves, na.rm = T), no.leaves.lost = mean(no.leaves.lost, na.rm = T), no.leaves.new = mean(no.leaves.new, na.rm = T), shoot.no = mean(shoot.no, na.rm = T), S1.total.length = mean(S1.total.length, na.rm = T), S2.total.length = mean(S2.total.length, na.rm = T), rhizome.length = mean(rhizome.length, na.rm = T), ag.biomass = mean(ag.biomass, na.rm = T), bg.biomass = mean(bg.biomass, na.rm = T), mortality.day = mean(mortality.day, na.rm = T), stat = mean(stat, na.rm = T))
 
 mesocosm.shoot.initial <- mesocosm.shoot %>%
+  dplyr::select(c(month, year, mesocosm, vase, infection, site, experiment.day, S1.no.leaves, no.leaves.lost, no.leaves.new, shoot.no, S1.total.length, S2.total.length, rhizome.length, ag.biomass, bg.biomass)) %>%
   subset(experiment.day == "0")
 colnames(mesocosm.shoot.initial) <- c("month", "year", "mesocosm", "vase", "infection", "site", "experiment.day", "no.leaves.initial", "no.leaves.lost.initial", "no.leaves.new.initial", "shoot.no.initial", "S1.total.length.initial", "S2.total.length.initial", "rhizome.length.initial", "ag.biomass.initial", "bg.biomass.initial")
 
 mesocosm.shoot.final <- mesocosm.shoot %>%
+  dplyr::select(c(month, year, mesocosm, vase, infection, site, experiment.day, S1.no.leaves, no.leaves.lost, no.leaves.new, shoot.no, S1.total.length, S2.total.length, rhizome.length, ag.biomass, bg.biomass)) %>%
   subset(experiment.day == "28")
 colnames(mesocosm.shoot.final) <- c("month", "year", "mesocosm", "vase", "infection", "site", "experiment.day", "no.leaves.final", "no.leaves.lost.final", "no.leaves.new.final", "shoot.no.final", "S1.total.length.final", "S2.total.length.final", "rhizome.length.final", "ag.biomass.final", "bg.biomass.final")
 
@@ -121,9 +126,25 @@ for (n in 1:88) {
    mesocosm.shoot$shoot.production[n] <- NA
   }
 }
-mesocosm.shoot$no.shoot.production <- 1-mesocosm.shoot$shoot.production
+mesocosm.shoot$no.shoot.production <- 1-mesocosm.shoot$shoot.production ##adding in shoot production
 
-##adding in shoot production
+mesocosm.shoot <- merge(mesocosm.shoot, mesocosm.survival, by = c("month", "year", "mesocosm", "vase", "infection", "site"), all.x = T)
+
+##Adding field prevalence
+mesocosm.shoot$field.prevalence <- 0
+for (n in 1:length(mesocosm.shoot$site)) {
+  if (mesocosm.shoot$site[n] == "LP")
+  {mesocosm.shoot$field.prevalence[n] = 0.29
+  }else if (mesocosm.shoot$site[n] == "NB")
+  {mesocosm.shoot$field.prevalence[n] = 0.47
+  } else if (mesocosm.shoot$site[n] == "DC")
+  {mesocosm.shoot$field.prevalence[n] = 0.61
+  }  else {
+    mesocosm.shoot$field.prevalence[n] = 0.69
+    }
+}
+
+mesocosm.shoot$rhizome.growth <- (mesocosm.shoot$rhizome.length.final - mesocosm.shoot$rhizome.length.initial)/28 ##Rhizome growth
 
 str(mesocosm.shoot)
 
@@ -151,10 +172,6 @@ mesocosm.growth <- merge(mesocosm.growth.d0, mesocosm.growth.d28, by = c("mesoco
 
 mesocosm.growth$leaf1.growth <- ((mesocosm.growth$final.length.cm - mesocosm.growth$delta.sheath.length) - mesocosm.growth$initial.length.cm)/28
 
-mesocosm.shoot.survival <- mesocosm.shoot %>%
-  dplyr::select(mesocosm, vase, infection, site, survival)
-mesocosm.growth <- merge(mesocosm.shoot.survival, mesocosm.growth, by = c("mesocosm", "vase", "infection", "site"))
-
 #only using surviving plants
 for (n in 1:88) {
   if (mesocosm.growth$survival[n] > 0) {
@@ -164,15 +181,25 @@ for (n in 1:88) {
   }
 }
 
-##Rhizome growth
-mesocosm.shoot$rhizome.growth <- (mesocosm.shoot$rhizome.length.final - mesocosm.shoot$rhizome.length.initial)/28
+mesocosm.shoot.survival <- mesocosm.shoot %>%
+  dplyr::select(mesocosm, vase, infection, site, survival)
+mesocosm.growth <- merge(mesocosm.shoot.survival, mesocosm.growth, by = c("mesocosm", "vase", "infection", "site"))
+
+##survival
+mesocosm.survival <- mesocosm.leaf %>%
+  dplyr::select(c(month, year, mesocosm, vase, infection, site, experiment.day, mortality.day, stat)) %>%
+  subset(experiment.day == "28") %>%
+  group_by(month, year, mesocosm, vase, infection, site) %>%
+  summarize(mortality.day = mean(mortality.day, na.rm = T), stat = mean(stat, na.rm = T)) #%>% ##adding survival analyses data
+  #filter(vase != 17 & vase != 21 & vase != 27 & vase != 29 & vase != 37 & vase != 47 & vase != 59)
+
 
 ##Mesocosm lesions
 mesocosm.lesions <- mesocosm.leaf %>%
   filter(shoot.no != 0 & experiment.day == 28) %>%
-  dplyr::select(c(month, year, mesocosm, vase, infection, site, experiment.day, S1.no.leaves, area.cm, lesion.area, lesion.presence, lesion.absence, notes)) %>%
+  dplyr::select(c(month, year, mesocosm, vase, infection, site, experiment.day, S1.no.leaves, area.cm, wd.lesion.area, wd.lesion.pc, lesion.presence, lesion.absence, exp.day.appeared, notes)) %>%
   group_by(month, year, mesocosm, vase, infection, site, experiment.day) %>%
-  summarize(S1.no.leaves = mean(S1.no.leaves, na.rm = T), area.cm = sum(area.cm, na.rm = T), lesion.area = sum(lesion.area, na.rm = T), lesion.presence = sum(lesion.presence, na.rm = T), lesion.absence = sum(lesion.absence, na.rm = T))
+  summarize(S1.no.leaves = mean(S1.no.leaves, na.rm = T), area.cm = sum(area.cm, na.rm = T), lesion.area = sum(wd.lesion.area, na.rm = T), WSWI = mean(wd.lesion.pc, na.rm = T), lesion.presence = sum(lesion.presence, na.rm = T), lesion.absence = sum(lesion.absence, na.rm = T), exp.day.appeared = mean(exp.day.appeared, na.rm = T))
 
 mesocosm.lesions$lesions.pc <- (mesocosm.lesions$lesion.area/mesocosm.lesions$area.cm)*100
 for (n in 1:length(mesocosm.lesions$lesions.pc)) {
@@ -205,6 +232,83 @@ for (n in 1:length(mesocosm.lesions$site)) {
     }
 }
 
+##mesocosm lesions new
+mesocosm.lesions.new <- mesocosm.leaf %>%
+  filter(shoot.no != 0 & experiment.day == 28 & exp.leaf.no != "1" & exp.leaf.no != "2" & exp.leaf.no != "3" & exp.leaf.no != "4" & exp.leaf.no != "5") %>%
+  dplyr::select(c(month, year, mesocosm, vase, infection, site, experiment.day, S1.no.leaves, area.cm, wd.lesion.area, wd.lesion.pc, lesion.presence, lesion.absence, exp.day.appeared, notes)) %>%
+  group_by(month, year, mesocosm, vase, infection, site, experiment.day) %>%
+  summarize(S1.no.leaves = mean(S1.no.leaves, na.rm = T), area.cm = sum(area.cm, na.rm = T), lesion.area = sum(wd.lesion.area, na.rm = T), WSWI = mean(wd.lesion.pc, na.rm = T), lesion.presence = sum(lesion.presence, na.rm = T), lesion.absence = sum(lesion.absence, na.rm = T), exp.day.appeared = mean(exp.day.appeared, na.rm = T))
+
+mesocosm.lesions.new$lesions.pc <- (mesocosm.lesions.new$lesion.area/mesocosm.lesions.new$area.cm)*100
+for (n in 1:length(mesocosm.lesions.new$lesions.pc)) {
+  if (mesocosm.lesions.new$lesions.pc[n] == "NaN") {
+    mesocosm.lesions.new$lesions.pc[n] <- 0
+  } else {
+   mesocosm.lesions.new$lesions.pc[n] <- mesocosm.lesions.new$lesions.pc[n]
+  }
+}
+
+mesocosm.lesions.new$infected <- 0
+for (n in 1:length(mesocosm.lesions.new$infected)) {
+  if (mesocosm.lesions.new$lesion.presence[n] >= 1) {
+    mesocosm.lesions.new$infected[n] <- 1
+  } else {
+   mesocosm.lesions.new$infected[n] <- 0
+  }
+}
+
+mesocosm.lesions.new$field.prevalence <- 0
+for (n in 1:length(mesocosm.lesions.new$site)) {
+  if (mesocosm.lesions.new$site[n] == "LP")
+  {mesocosm.lesions.new$field.prevalence[n] = 0.29
+  }else if (mesocosm.lesions.new$site[n] == "NB")
+  {mesocosm.lesions.new$field.prevalence[n] = 0.47
+  } else if (mesocosm.lesions.new$site[n] == "DC")
+  {mesocosm.lesions.new$field.prevalence[n] = 0.61
+  }  else {
+    mesocosm.lesions.new$field.prevalence[n] = 0.69
+    }
+}
+
+##mesocosm lesions old
+mesocosm.lesions.old <- mesocosm.leaf %>%
+  filter(shoot.no != 0 & experiment.day == 28 & exp.leaf.no != "-2" & exp.leaf.no != "-1" & exp.leaf.no != "0") %>%
+  dplyr::select(c(month, year, mesocosm, vase, infection, site, experiment.day, S1.no.leaves, area.cm, wd.lesion.area, wd.lesion.pc, lesion.presence, lesion.absence, exp.day.appeared, notes)) %>%
+  group_by(month, year, mesocosm, vase, infection, site, experiment.day) %>%
+  summarize(S1.no.leaves = mean(S1.no.leaves, na.rm = T), area.cm = sum(area.cm, na.rm = T), lesion.area = sum(wd.lesion.area, na.rm = T), WSWI = mean(wd.lesion.pc, na.rm = T), lesion.presence = sum(lesion.presence, na.rm = T), lesion.absence = sum(lesion.absence, na.rm = T), exp.day.appeared = mean(exp.day.appeared, na.rm = T))
+
+mesocosm.lesions.old$lesions.pc <- (mesocosm.lesions.old$lesion.area/mesocosm.lesions.old$area.cm)*100
+for (n in 1:length(mesocosm.lesions.old$lesions.pc)) {
+  if (mesocosm.lesions.old$lesions.pc[n] == "NaN") {
+    mesocosm.lesions.old$lesions.pc[n] <- 0
+  } else {
+   mesocosm.lesions.old$lesions.pc[n] <- mesocosm.lesions.old$lesions.pc[n]
+  }
+}
+
+mesocosm.lesions.old$infected <- 0
+for (n in 1:length(mesocosm.lesions.old$infected)) {
+  if (mesocosm.lesions.old$lesion.presence[n] >= 1) {
+    mesocosm.lesions.old$infected[n] <- 1
+  } else {
+   mesocosm.lesions.old$infected[n] <- 0
+  }
+}
+
+mesocosm.lesions.old$field.prevalence <- 0
+for (n in 1:length(mesocosm.lesions.old$site)) {
+  if (mesocosm.lesions.old$site[n] == "LP")
+  {mesocosm.lesions.old$field.prevalence[n] = 0.29
+  }else if (mesocosm.lesions.old$site[n] == "NB")
+  {mesocosm.lesions.old$field.prevalence[n] = 0.47
+  } else if (mesocosm.lesions.old$site[n] == "DC")
+  {mesocosm.lesions.old$field.prevalence[n] = 0.61
+  }  else {
+    mesocosm.lesions.old$field.prevalence[n] = 0.69
+    }
+}
+
+
 ## Field Data
 field.leaf <- read.csv("TRIAL2_field.csv")
 field.leaf$quad <- as.factor(field.leaf$quad)
@@ -216,7 +320,7 @@ field.leaf <- field.leaf %>%
 
 field.leaf$lesion.present <- NA
 
-for (n in 1:length(field.leaf)) {
+for (n in 1:length(field.leaf$lesion.pc.2)) {
   if (field.leaf$lesion.pc.2[n] <= 0) {
     field.leaf$lesion.present[n] <- 0
     } else {field.leaf$lesion.present[n] <- 1
@@ -233,9 +337,16 @@ str(field.leaf)
 field.quad <- field.leaf %>%
   filter(year == "2016") %>%
   group_by(site, quad) %>%
-  summarize(density.decm = mean(shoot.m2, na.rm = T)/100, canopy.height = mean(length.cm, na.rm = T), prevalence = sum(lesion.present)/(sum(lesion.present) + sum(lesion.absent)), leaf.no = mean(no.leaves, na.rm = T))
+  summarize(density = mean(shoot.m2, na.rm = T), canopy.height = mean(length.cm, na.rm = T), lesion.present = sum(lesion.present), lesion.absent = sum(lesion.absent), prevalence = sum(lesion.present)/(sum(lesion.present) + sum(lesion.absent)), leaf.no = mean(no.leaves, na.rm = T))
 
-field.quad$leaf.density.decm <- field.quad$density.decm * field.quad$leaf.no
+field.quad$leaf.density <- field.quad$density * field.quad$leaf.no
+
+field.site.mean <- field.quad %>%
+  group_by(site) %>%
+  summarize(lesion.present = sum(lesion.present), lesion.absent = sum(lesion.absent), p.mean = mean(prevalence, na.rm = T), p.se = se(prevalence, na.rm = T), length.mean = mean(canopy.height, na.rm = T), shoot.density.mean = mean(density, na.rm = T), leaf.density.mean = mean(leaf.density, na.rm =T))
+
+field.site.mean$leaf.loss <- c(2.18, 2.64, 1.82, 1.18)
+field.site.mean$transmission <- c(0.77, 0.97, 0.89, 0.81)
 
 ## Environmental Data
 #d1.env <- read.csv("LabyInoc_T2_ZM_ENV_23JAN2017.csv")
@@ -246,7 +357,7 @@ field.quad$leaf.density.decm <- field.quad$density.decm * field.quad$leaf.no
 #GENERAL
 #ANALYSES
 #NOTES
-```{r}
+```{r eval = FALSE, echo = FALSE}
 # 1) HOW TO TREAT MESOCOSM IN MODELS?
   #Currently treating it as a BLOCKING EFFECT (Random effect gives errors in survival and shoot production models?)
 
@@ -257,7 +368,26 @@ field.quad$leaf.density.decm <- field.quad$density.decm * field.quad$leaf.no
 #MESOCOSM
 #Question 1: What are the effects of wasting disease on seagrass physiology and morphology
 ##Survival
-```{r}
+```{r eval = FALSE, echo = FALSE}
+#KM curves
+surv_object <- Surv(time = mesocosm.survival$mortality.day, event = mesocosm.survival$stat)
+fit.infection <- survfit(surv_object ~ infection, data = mesocosm.survival)
+summary(fit.infection)
+ggsurvplot(fit.infection, data = mesocosm.survival, pval = TRUE)
+survdiff(surv_object ~ infection, data = mesocosm.survival)
+
+fit.site <- survfit(surv_object ~ site, data = mesocosm.survival)
+summary(fit.site)
+ggsurvplot(fit.site, data = mesocosm.survival, pval = TRUE)
+
+fit.mesocosm <- survfit(surv_object ~ mesocosm, data = mesocosm.survival)
+summary(fit.mesocosm)
+ggsurvplot(fit.mesocosm, data = mesocosm.survival, pval = TRUE)
+
+#CoxPH --> doesn't work for site
+#fit.coxph <- coxph(surv_object ~ infection, data = mesocosm.shoot)
+#ggforest(fit.coxph, data = mesocosm.shoot)
+
 p <- ggplot(mesocosm.shoot, aes(x = site, y = survival, fill = infection)) + 
   scale_fill_manual(values = c("white", "gray")) +
   geom_violin(position = position_dodge(1)) +
@@ -283,19 +413,26 @@ sum(prop.mortality$survival)
 ```
 
 ##Shoot Production
-```{r}
-p <- ggplot(mesocosm.shoot, aes(x = site, y = shoot.production, fill = infection)) + 
-  scale_fill_manual(values = c("white", "gray")) +
-  geom_violin(position = position_dodge(1)) +
+```{r eval = FALSE, echo = FALSE}
+p <- ggplot(filter(mesocosm.shoot, vase != 17 & vase != 21 & vase != 27 & vase != 29 & vase != 37 & vase != 47 & vase != 59), aes(x = site, y = shoot.production)) + 
+  #scale_fill_manual(values = c("white", "gray")) +
+  #geom_violin(position = position_dodge(1)) +
   geom_dotplot(binaxis = 'y', stackdir = 'center', position = position_dodge(1), dotsize  = 0.5) +
   stat_summary(fun.y = mean, geom = "point", size = 3, color = "red", position = position_dodge(1)) +
   labs(x = "Source Site", y = "# New shoots produced") +
   theme_classic()
 p
 
-##NEED To sort out THIS ANALYSIS !!
+##NEED To sort out THIS ANALYSIS !! ... marginal effect of site
+m.new.shoots <- aov(shoot.production ~ site * infection + mesocosm, data = filter(mesocosm.shoot, vase != 17 & vase != 21 & vase != 27 & vase != 29 & vase != 37 & vase != 47 & vase != 59))
+Anova(m.new.shoots)
+
+posthoc.new.shoots <- TukeyHSD(m.new.shoots)
+posthoc.new.shoots
+multcompLetters(posthoc.new.shoots$`site`[,"p adj"])
+
 m.new.shoots <- lmer(shoot.production ~ site*infection + (1|mesocosm), data = mesocosm.shoot)
-anova(m.new.shoots) #significant effect of site
+Anova(m.new.shoots) #significant effect of site
 m.new.shoots <- glm(cbind(shoot.production, no.shoot.production) ~ site*infection + mesocosm, family = binomial, data = mesocosm.shoot)
 anova(m.new.shoots, test = "LR")
 Anova(m.new.shoots)#significant effect of infection ##use this for P values (package = car)
@@ -305,10 +442,14 @@ summary(glht(m.new.shoots, mcp(site = "Tukey"))) ##ERRORS
 
 prop.new.shoot <- subset(mesocosm.shoot, infection == "Y")
 sum(prop.new.shoot$shoot.production, na.rm = T)
+
+new.shoot.mean <- mesocosm.shoot %>%
+  group_by(site) %>%
+  summarize(new.shoot.mean = mean(shoot.production, na.rm = T), new.shoot.se = se(shoot.production, na.rm = T))
 ```
 
 ##Leaf number
-```{r}
+```{r eval = FALSE, echo = FALSE}
 p <- ggplot(mesocosm.shoot, aes(x = infection, y = no.leaves.initial)) + 
   #scale_fill_manual(values = c("white", "gray")) +
   geom_violin(position = position_dodge(1)) +
@@ -341,8 +482,8 @@ leaf.initial.means <- mesocosm.shoot %>%
 
 
 ##Leaf production
-```{r}
-p <- ggplot(mesocosm.shoot, aes(x = site, y = no.leaves.new.final, fill = infection)) + 
+```{r eval = FALSE, echo = FALSE}
+p <- ggplot(filter(mesocosm.shoot, vase != 17 & vase != 21 & vase != 27 & vase != 29 & vase != 37 & vase != 47 & vase != 59), aes(x = site, y = no.leaves.new.final, fill = infection)) + 
   scale_fill_manual(values = c("white", "gray")) +
   geom_violin(position = position_dodge(1)) +
   geom_dotplot(binaxis = 'y', stackdir = 'center', position = position_dodge(1), dotsize  = 0.5) +
@@ -351,7 +492,7 @@ p <- ggplot(mesocosm.shoot, aes(x = site, y = no.leaves.new.final, fill = infect
   theme_classic()
 p
 
-p <- ggplot(mesocosm.shoot, aes(x = site, y = no.leaves.new.final)) + 
+p <- ggplot(mesocosm.shoot, aes(x = infection, y = no.leaves.new.final)) + 
   #scale_fill_manual(values = c("white", "gray")) +
   geom_violin(position = position_dodge(1)) +
   geom_dotplot(binaxis = 'y', stackdir = 'center', position = position_dodge(1), dotsize  = 0.5) +
@@ -360,12 +501,16 @@ p <- ggplot(mesocosm.shoot, aes(x = site, y = no.leaves.new.final)) +
   theme_classic()
 p
 
-m.new.leaves <- aov(no.leaves.new.final ~ site*infection + mesocosm + no.leaves.initial, data = mesocosm.shoot)
+m.new.leaves <- aov(no.leaves.new.final ~ site*infection + mesocosm + no.leaves.initial, data = filter(mesocosm.shoot, vase != 17 & vase != 21 & vase != 27 & vase != 29 & vase != 37 & vase != 47 & vase != 59))
 Anova(m.new.leaves) #significant effect of infection (# of leaves intitial included as a covariate but not significant so removed)
 shapiro.test(residuals(m.new.leaves)) #passed
 leveneTest(m.new.leaves) #passed
 plot(m.new.leaves) #distribution looks ok
 hist(residuals(m.new.leaves), main = '') #residuals look pretty normal
+
+posthoc.new.leaves <- TukeyHSD(aov(no.leaves.new.final ~ site*infection + mesocosm, data = mesocosm.shoot))
+posthoc.new.leaves
+multcompLetters(posthoc.new.leaves$site [,"p adj"])
 
 #MESOCOSM AS RANDOM EFFECT
 m.new.leaves <- lmer(no.leaves.new.final ~ site*infection + (1|mesocosm), data = mesocosm.shoot)
@@ -373,6 +518,7 @@ Anova(m.new.leaves)
 
 #Summary statistics
 leaf.production.means <- mesocosm.shoot %>%
+  filter(vase != 17 & vase != 21 & vase != 27 & vase != 29 & vase != 37 & vase != 47 & vase != 59) %>%
   group_by(infection, site) %>%
   summarize(mean.new.leaves = mean(no.leaves.new.final, na.rm = T), SE.new.leaves = se(no.leaves.new.final, na.rm = T))
 
@@ -387,8 +533,8 @@ leaf.production.means <- mesocosm.shoot %>%
 ```
 
 ##Leaf loss
-```{r}
-p <- ggplot(mesocosm.shoot, aes(x = site, y = no.leaves.lost.final, fill = infection)) + 
+```{r eval = FALSE, echo = FALSE}
+p <- ggplot(filter(mesocosm.shoot, vase != 17 & vase != 21 & vase != 27 & vase != 29 & vase != 37 & vase != 47 & vase != 59), aes(x = site, y = no.leaves.lost.final, fill = infection)) + 
   scale_fill_manual(values = c("white", "gray")) +
   geom_violin(position = position_dodge(1)) +
   geom_dotplot(binaxis = 'y', stackdir = 'center', position = position_dodge(1), dotsize  = 0.5) +
@@ -397,14 +543,14 @@ p <- ggplot(mesocosm.shoot, aes(x = site, y = no.leaves.lost.final, fill = infec
   theme_classic()
 p
 
-m.lost.leaves <- aov(no.leaves.lost.final ~ site*infection + mesocosm + no.leaves.initial, data = mesocosm.shoot)
+m.lost.leaves <- aov(no.leaves.lost.final ~ site*infection + mesocosm + no.leaves.initial, data = filter(mesocosm.shoot,vase != 17 & vase != 21 & vase != 27 & vase != 29 & vase != 37 & vase != 47 & vase != 59))
 Anova(m.lost.leaves) #significant effect of infection*site (# of leaves intitial included as a covariate)
 shapiro.test(residuals(m.lost.leaves)) #pass
 leveneTest(m.lost.leaves) #pass
 plot(m.lost.leaves) #distribution looks ok
 hist(residuals(m.lost.leaves), main = '') #residuals look pretty normal
 
-posthoc.lost.leaves <- TukeyHSD(aov(no.leaves.lost.final ~ site*infection, data = mesocosm.shoot))
+posthoc.lost.leaves <- TukeyHSD(aov(no.leaves.lost.final ~ site*infection + mesocosm, data = filter(mesocosm.shoot,vase != 17 & vase != 21 & vase != 27 & vase != 29 & vase != 37 & vase != 47 & vase != 59)))
 posthoc.lost.leaves
 multcompLetters(posthoc.lost.leaves$`site:infection`[,"p adj"])
 
@@ -437,11 +583,22 @@ leaf.loss.means <- mesocosm.shoot %>%
 #posthoc.lost.leaves.disease <- TukeyHSD(aov(no.leaves.lost.final ~ site, data = filter(mesocosm.shoot, infection == "Y")))
 #posthoc.lost.leaves.disease
 #multcompLetters(posthoc.lost.leaves.disease$`site`[,"p adj"])
+
+
+## Leaf loss by field infection
+p <- ggplot(filter(mesocosm.shoot, infection == "Y"), aes(x = field.prevalence, y = no.leaves.lost.final, fill = site)) + 
+  scale_fill_manual(values = c("white", "gray20", "gray80", "black")) +
+  #geom_violin(position = position_dodge(1)) +
+  geom_dotplot(binaxis = 'y', stackdir = 'center', position = position_dodge(1), dotsize  = 0.5) +
+  stat_summary(fun.y = mean, geom = "point", size = 3, color = "red", position = position_dodge(1)) +
+  labs(x = "Field prevalence", y = "Number of Leaves Lost") +
+  theme_classic()
+p
 ```
 
 ##leaf growth
-```{r}
-p <- ggplot(mesocosm.growth, aes(x = site, y = leaf1.growth)) + 
+```{r eval = FALSE, echo = FALSE}
+p <- ggplot(filter(mesocosm.growth, vase != 17 & vase != 21 & vase != 27 & vase != 29 & vase != 37 & vase != 47 & vase != 59), aes(x = site, y = leaf1.growth)) + 
   #scale_fill_manual(values = c("white", "gray")) +
   geom_violin(position = position_dodge(1)) +
   geom_dotplot(binaxis = 'y', stackdir = 'center', position = position_dodge(1), dotsize  = 0.5) +
@@ -449,7 +606,7 @@ p <- ggplot(mesocosm.growth, aes(x = site, y = leaf1.growth)) +
   labs(x = "Source Site", y = "Leaf 1 growth cm per day") +
   theme_classic()
 p
-p <- ggplot(mesocosm.growth, aes(x = infection, y = leaf1.growth)) + 
+p <- ggplot(filter(mesocosm.growth, vase != 17 & vase != 21 & vase != 27 & vase != 29 & vase != 37 & vase != 47 & vase != 59), aes(x = infection, y = leaf1.growth)) + 
   #scale_fill_manual(values = c("white", "gray")) +
   geom_violin(position = position_dodge(1)) +
   geom_dotplot(binaxis = 'y', stackdir = 'center', position = position_dodge(1), dotsize  = 0.5) +
@@ -458,14 +615,14 @@ p <- ggplot(mesocosm.growth, aes(x = infection, y = leaf1.growth)) +
   theme_classic()
 p
 
-m.leaf1.growth <- aov(leaf1.growth ~ site*infection + mesocosm + initial.length.cm, data = mesocosm.growth)
-anova(m.leaf1.growth) #significant effect of infection (# of leaves intitial included as a covariate)
+m.leaf1.growth <- aov(leaf1.growth ~ site*infection + mesocosm + initial.length.cm, data = filter(mesocosm.growth, vase != 17 & vase != 21 & vase != 27 & vase != 29 & vase != 37 & vase != 47 & vase != 59))
+Anova(m.leaf1.growth) #significant effect of infection (# of leaves intitial included as a covariate)
 shapiro.test(residuals(m.leaf1.growth)) #pass
 leveneTest(m.leaf1.growth) # pass, without mesocosm or initial length in model
 plot(m.leaf1.growth) #distribution looks ok
 hist(residuals(m.leaf1.growth), main = '') #residuals look pretty normal
 
-posthoc.growth <- TukeyHSD(aov(leaf1.growth ~ site*infection, data = mesocosm.growth))
+posthoc.growth <- TukeyHSD(aov(leaf1.growth ~ site*infection + mesocosm, data = mesocosm.growth))
 posthoc.growth
 multcompLetters(posthoc.growth$`site`[,"p adj"])
 
@@ -474,13 +631,14 @@ anova(m.leaf1.growth)
 
 #Summary statistics
 leaf1.growth.means <- mesocosm.growth %>%
-  group_by(site) %>%
+  filter(vase != 17 & vase != 21 & vase != 27 & vase != 29 & vase != 37 & vase != 47 & vase != 59) %>%
+  group_by(infection) %>%
   summarize(mean.leaf1.growth = mean(leaf1.growth, na.rm = T), SE.leaf1.growth = se(leaf1.growth, na.rm = T))
 ```
 
 ##Aboveground biomass
-```{r}
-p <- ggplot(mesocosm.shoot, aes(x = site, y = ag.biomass.final)) + 
+```{r eval = FALSE, echo = FALSE}
+p <- ggplot(filter(mesocosm.shoot,vase != 17 & vase != 21 & vase != 27 & vase != 29 & vase != 37 & vase != 47 & vase != 59), aes(x = site, y = ag.biomass.final)) + 
   #scale_fill_manual(values = c("white", "gray")) +
   geom_violin(position = position_dodge(1)) +
   geom_dotplot(binaxis = 'y', stackdir = 'center', position = position_dodge(1), dotsize  = 0.5) +
@@ -489,7 +647,7 @@ p <- ggplot(mesocosm.shoot, aes(x = site, y = ag.biomass.final)) +
   theme_classic()
 p
 
-p <- ggplot(mesocosm.shoot, aes(x = infection, y = ag.biomass.final)) + 
+p <- ggplot(filter(mesocosm.shoot,vase != 17 & vase != 21 & vase != 27 & vase != 29 & vase != 37 & vase != 47 & vase != 59), aes(x = infection, y = ag.biomass.final)) + 
   #scale_fill_manual(values = c("white", "gray")) +
   geom_violin(position = position_dodge(1)) +
   geom_dotplot(binaxis = 'y', stackdir = 'center', position = position_dodge(1), dotsize  = 0.5) +
@@ -498,8 +656,8 @@ p <- ggplot(mesocosm.shoot, aes(x = infection, y = ag.biomass.final)) +
   theme_classic()
 p
 
-m.ag.biomass <- aov(ag.biomass.final ~ site*infection + mesocosm, data = mesocosm.shoot)
-anova(m.ag.biomass) #significant effect of infection (# of leaves intitial included as a covariate)
+m.ag.biomass <- aov(ag.biomass.final ~ site*infection + mesocosm, data = filter(mesocosm.shoot,vase != 17 & vase != 21 & vase != 27 & vase != 29 & vase != 37 & vase != 47 & vase != 59))
+Anova(m.ag.biomass) #significant effect of infection (# of leaves intitial included as a covariate)
 shapiro.test(residuals(m.ag.biomass)) #pass
 leveneTest(m.ag.biomass) #pass run on model without mesocosm
 plot(m.ag.biomass) #distribution looks ok
@@ -519,13 +677,14 @@ ag.lsmo.cld
 
 #Summary statistics
 ag.biomass.means <- mesocosm.shoot %>%
-  group_by(site) %>%
+  filter(vase != 17 & vase != 21 & vase != 27 & vase != 29 & vase != 37 & vase != 47 & vase != 59) %>%
+  group_by(infection) %>%
   summarize(mean.ag.biomass = mean(ag.biomass.final, na.rm = T), SE.ag.biomass = se(ag.biomass.final, na.rm = T))
 ```
 
 ##Belowground Biomass
-```{r}
-p <- ggplot(mesocosm.shoot, aes(x = site, y = bg.biomass.final)) + 
+```{r eval = FALSE, echo = FALSE}
+p <- ggplot(filter(mesocosm.shoot,vase != 17 & vase != 21 & vase != 27 & vase != 29 & vase != 37 & vase != 47 & vase != 59), aes(x = site, y = bg.biomass.final)) + 
   #scale_fill_manual(values = c("white", "gray")) +
   geom_violin(position = position_dodge(1)) +
   geom_dotplot(binaxis = 'y', stackdir = 'center', position = position_dodge(1), dotsize  = 0.5) +
@@ -534,7 +693,7 @@ p <- ggplot(mesocosm.shoot, aes(x = site, y = bg.biomass.final)) +
   theme_classic()
 p
 
-p <- ggplot(mesocosm.shoot, aes(x = infection, y = bg.biomass.final)) + 
+p <- ggplot(filter(mesocosm.shoot, vase != 17 & vase != 21 & vase != 27 & vase != 29 & vase != 37 & vase != 47 & vase != 59), aes(x = infection, y = bg.biomass.final)) + 
   #scale_fill_manual(values = c("white", "gray")) +
   geom_violin(position = position_dodge(1)) +
   geom_dotplot(binaxis = 'y', stackdir = 'center', position = position_dodge(1), dotsize  = 0.5) +
@@ -543,14 +702,14 @@ p <- ggplot(mesocosm.shoot, aes(x = infection, y = bg.biomass.final)) +
   theme_classic()
 p
 
-m.bg.biomass <- aov(bg.biomass.final ~ site*infection + mesocosm, data = mesocosm.shoot)
-anova(m.bg.biomass) #significant effect of infection and site
+m.bg.biomass <- aov(bg.biomass.final ~ site*infection + mesocosm, data = filter(mesocosm.shoot,vase != 17 & vase != 21 & vase != 27 & vase != 29 & vase != 37 & vase != 47 & vase != 59))
+Anova(m.bg.biomass) #significant effect of infection and site
 shapiro.test(residuals(m.bg.biomass)) #pass
 leveneTest(m.bg.biomass) #pass run on model without mesocosm
 plot(m.bg.biomass) #distribution looks ok
 hist(residuals(m.bg.biomass), main = '') #residuals look pretty normal
 
-posthoc.bg.biomass <- TukeyHSD(aov(bg.biomass.final ~ site*infection + mesocosm, data = mesocosm.shoot))
+posthoc.bg.biomass <- TukeyHSD(aov(bg.biomass.final ~ site*infection + mesocosm, data = filter(mesocosm.shoot,vase != 17 & vase != 21 & vase != 27 & vase != 29 & vase != 37 & vase != 47 & vase != 59)))
 posthoc.bg.biomass
 multcompLetters(posthoc.bg.biomass$`site`[,"p adj"])
 
@@ -564,13 +723,14 @@ bg.lsmo.cld
 
 #Summary statistics
 bg.biomass.means <- mesocosm.shoot %>%
-  group_by(infection) %>%
+  filter(vase != 17 & vase != 21 & vase != 27 & vase != 29 & vase != 37 & vase != 47 & vase != 59) %>%
+  group_by(site) %>%
   summarize(mean.bg.biomass = mean(bg.biomass.final, na.rm = T), SE.bg.biomass = se(bg.biomass.final, na.rm = T))
 ```
 
 ##Rhizome Growth
-```{r}
-p <- ggplot(mesocosm.shoot, aes(x = site, y = rhizome.growth, fill = infection)) + 
+```{r eval = FALSE, echo = FALSE}
+p <- ggplot(filter(mesocosm.shoot,vase != 17 & vase != 21 & vase != 27 & vase != 29 & vase != 37 & vase != 47 & vase != 59), aes(x = site, y = rhizome.growth, fill = infection)) +
   scale_fill_manual(values = c("white", "gray")) +
   geom_violin(position = position_dodge(1)) +
   geom_dotplot(binaxis = 'y', stackdir = 'center', position = position_dodge(1), dotsize  = 0.5) +
@@ -579,14 +739,14 @@ p <- ggplot(mesocosm.shoot, aes(x = site, y = rhizome.growth, fill = infection))
   theme_classic()
 p
 
-m.rhizome.growth <- aov(rhizome.growth ~ site*infection + mesocosm, data = mesocosm.shoot)
-anova(m.rhizome.growth) #significant interaction of infection and site
+m.rhizome.growth <- aov(rhizome.growth ~ site*infection + mesocosm, data = filter(mesocosm.shoot, vase != 17 & vase != 21 & vase != 27 & vase != 29 & vase != 37 & vase != 47 & vase != 59))
+Anova(m.rhizome.growth) #significant interaction of infection and site
 shapiro.test(residuals(m.rhizome.growth)) #pass
 leveneTest(m.rhizome.growth) #pass, run on model without mesocosm
 plot(m.rhizome.growth) #distribution looks ok
 hist(residuals(m.rhizome.growth), main = '') #residuals look pretty normal
 
-posthoc.rhizome.growth <- TukeyHSD(aov(rhizome.growth ~ site*infection + mesocosm, data = mesocosm.shoot))
+posthoc.rhizome.growth <- TukeyHSD(aov(rhizome.growth ~ site*infection + mesocosm, data = filter(mesocosm.shoot, vase != 17 & vase != 21 & vase != 27 & vase != 29 & vase != 37 & vase != 47 & vase != 59)))
 posthoc.rhizome.growth
 multcompLetters(posthoc.rhizome.growth$`site:infection`[,"p adj"])
 
@@ -600,12 +760,13 @@ rz.lsmo.cld
 
 #Summary statistics
 rhizome.growth.means <- mesocosm.shoot %>%
+  filter( vase != 17 & vase != 21 & vase != 27 & vase != 29 & vase != 37 & vase != 47 & vase != 59)%>%
   group_by(site, infection) %>%
   summarize(mean.rhizome.growth = mean(rhizome.growth, na.rm = T), SE.rhizome.growth = se(rhizome.growth, na.rm = T))
 ```
 
 ##Lesion Percent cover
-```{r}
+```{r eval = FALSE, echo = FALSE}
 #proportion of new leaves infected (leaves produced during exp.)
 p <- ggplot(filter(mesocosm.leaf, experiment.day == "28" & infection == "Y" & shoot.no != 0 & exp.leaf.no != "1" & exp.leaf.no != "2" & exp.leaf.no != "3" & exp.leaf.no != "4" & exp.leaf.no != "5"), aes(x = field.prevalence, y = lesion.presence, fill = site)) + #& exp.leaf.no != "-2" & exp.leaf.no != "4" & exp.leaf.no != "5" 
   scale_fill_manual(values = c("black", "gray80", "gray30", "white")) +
@@ -630,12 +791,19 @@ p <- ggplot(filter(mesocosm.leaf, experiment.day == "28" & infection == "Y" & sh
   theme_classic()
 p
 
-m.severity.L1 <- glm(cbind(lesion.presence, lesion.absence) ~ field.prevalence, family = binomial, data = filter(mesocosm.leaf, experiment.day == "28" & infection == "Y" & shoot.no != 0 & exp.leaf.no != "1" & exp.leaf.no != "2" & exp.leaf.no != "3" & exp.leaf.no != "4" & exp.leaf.no != "5"))
+m.severity.L1 <- glm(cbind(lesion.presence, lesion.absence) ~ field.prevalence, family = binomial, data = filter(mesocosm.leaf, experiment.day == "28" & infection == "Y" & shoot.no != 0 & exp.leaf.no != "-2" & exp.leaf.no != "-1" & exp.leaf.no != "1" & exp.leaf.no != "2" & exp.leaf.no != "3" & exp.leaf.no != "4" & exp.leaf.no != "5"))
 Anova(m.severity.L1, test = "LR") ##use this for P values (package = car)
-summary(m.severity)
+summary(m.severity.L1)
 
+m.severity.LNEW <- glm(cbind(lesion.presence, lesion.absence) ~ field.prevalence, family = binomial, data = filter(mesocosm.leaf, experiment.day == "28" & infection == "Y" & shoot.no != 0 & exp.leaf.no != "1" & exp.leaf.no != "2" & exp.leaf.no != "3" & exp.leaf.no != "4" & exp.leaf.no != "5"))
+Anova(m.severity.LNEW, test = "LR") ##use this for P values (package = car)
+summary(m.severity.LNEW)
 
-##Proportion of leaves infected (On plot of healthy, one plot of diseased)
+m.severity.LOLD <- glm(cbind(lesion.presence, lesion.absence) ~ field.prevalence, family = binomial, data = filter(mesocosm.leaf, experiment.day == "28" & infection == "Y" & shoot.no != 0 & exp.leaf.no != "-2" & exp.leaf.no != "-1" & exp.leaf.no != "0"))
+Anova(m.severity.LOLD, test = "LR") ##use this for P values (package = car)
+summary(m.severity.LOLD)
+
+##Proportion of leaves infected (One plot of healthy, one plot of diseased)
 p <- ggplot(filter(mesocosm.lesions, infection == "N"), aes(x = field.prevalence, y = lesion.presence/(lesion.presence+lesion.absence), fill = site)) +
   scale_fill_manual(values = c("white", "gray20", "gray80", "black")) + #"gray20", "gray80", 
   #geom_violin(position = position_dodge(1)) +
@@ -666,7 +834,7 @@ p <- ggplot(filter(mesocosm.lesions, experiment.day == "28" & infection == "N"),
 p
 
 #Lesion percent cover means
-p <- ggplot(mesocosm.lesions, aes(x = field.prevalence, y = lesions.pc, fill = site)) +
+p <- ggplot(filter(mesocosm.lesions, infection == "Y"), aes(x = field.prevalence, y = lesions.pc, fill = site)) +
   scale_fill_manual(values = c("white", "gray20", "gray80", "black")) +
   #geom_violin(position = position_dodge(1)) +
   geom_dotplot(binaxis = 'y', stackdir = 'center', position = position_dodge(1), dotsize  = 0.5) +
@@ -694,19 +862,154 @@ lesion.pc.d28.means <- lesion.pc.d28 %>%
   group_by(exp.leaf.no, infection) %>%
   summarize(mean.lesion.pc = mean(lesion.pc, na.rm= T), SE.lesion.pc = se(lesion.pc, na.rm = T))
 
+#Appearance date of new leaves
+p <- ggplot(filter(mesocosm.leaf, experiment.day == "28" & infection == "Y" & shoot.no != 0 & exp.leaf.no != "1" & exp.leaf.no != "2" & exp.leaf.no != "3" & exp.leaf.no != "4" & exp.leaf.no != "5"), aes(x = site, y = exp.day.appeared, fill = lesion.presence.factor)) +
+  scale_fill_manual(values = c("white","black")) +
+  #geom_violin(position = position_dodge(1)) +
+  geom_dotplot(binaxis = 'y', stackdir = 'center', position = position_dodge(0), dotsize  = 0.5) +
+  stat_summary(fun.y = mean, geom = "point", size = 1, color = "red", position = position_dodge(0)) +
+  labs(x = "Leaf appearance day", y = "Lesion presence") +
+  ylim(0,30) +
+  #xlim (0,1) +
+  theme_classic()
+p
 
+plot(lesion.presence ~ exp.day.appeared, data = filter(mesocosm.leaf, experiment.day == "28" & infection == "Y" & shoot.no != 0 & exp.leaf.no != "1" & exp.leaf.no != "2" & exp.leaf.no != "3" & exp.leaf.no != "4" & exp.leaf.no != "5"))
+```
+
+###Whole Shoot Wasting Index (modified) Day 28
+```{r eval = FALSE, echo = FALSE}
+WSWI.model <- aov(lesions.pc ~ site * infection + mesocosm, data = filter(mesocosm.lesions, vase != "22" & vase != "24")) ##mesocosm not significant so removed from the model; excluding plants that lost vectors in <10 days
+Anova(WSWI.model)
+
+posthoc.WSWI <- TukeyHSD(WSWI.model)
+posthoc.WSWI
+multcompLetters(posthoc.WSWI$`site:infection`[,"p adj"])
+
+p <- ggplot(filter(mesocosm.lesions, vase != "22" & vase != "24"), aes(x = site, y = lesions.pc, fill = infection)) +
+  scale_fill_manual(values = c("white", "black")) +
+  #geom_violin(position = position_dodge(1)) +
+  geom_dotplot(binaxis = 'y', stackdir = 'center', position = position_dodge(1), dotsize  = 0.5) +
+  stat_summary(fun.y = mean, geom = "point", size = 1, color = "red", position = position_dodge(1)) +
+  labs(x = "Site", y = "Mean lesion percent cover per shoot") +
+  ylim(0,100) +
+  theme_classic()
+p
+```
+
+
+###Eelgrass Wasting Diseae Shoot Severity Day 28
+```{r eval = FALSE, echo = FALSE}
+##total shoot
+EWDSS.model <- glm(cbind(lesion.presence, lesion.absence) ~ site*infection + mesocosm + exp.day.appeared, family = binomial, data = mesocosm.lesions)
+Anova(EWDSS.model, test = "LR") #something wrong in model (trouble with sites with no disease)
+
+leastsquares2 = lsmeans::lsmeans(EWDSS.model,
+                                 pairwise ~ site:infection,
+                                 adjust = "tukey")
+leastsquares2$contrasts
+lsmeans::cld(leastsquares2,
+             alpha = 0.05,
+             type = "response",
+             Letters = letters,
+             adjust = "tukey")
+
+summary(glht(EWDSS.model, mcp(site ="Tukey"))) ##Need to run interaction??
+
+p <- ggplot(mesocosm.lesions, aes(x = site, y = lesion.presence/(lesion.presence+lesion.absence), fill = infection)) +
+  scale_fill_manual(values = c("white", "black")) +
+  #geom_violin(position = position_dodge(1)) +
+  geom_dotplot(binaxis = 'y', stackdir = 'center', position = position_dodge(1), dotsize  = 0.5) +
+  stat_summary(fun.y = mean, geom = "point", size = 1, color = "red", position = position_dodge(1)) +
+  labs(x = "site", y = "infected") +
+  ylim(0,1) +
+  theme_classic()
+p
+
+mesocosm.lesions$prop.inf <- mesocosm.lesions$lesion.presence/(mesocosm.lesions$lesion.presence+mesocosm.lesions$lesion.absence)
+
+mesocosm.lesions.means <- mesocosm.lesions %>%
+  group_by(infection, site) %>%
+  summarize(prop.inf.mean = mean(prop.inf, na.rm = T), prop.inf.se = se(prop.inf, na.rm = T))
+
+##new leaves
+EWDSS.model.new <- glm(cbind(lesion.presence, lesion.absence) ~ site + mesocosm + exp.day.appeared, family = binomial, data = filter(mesocosm.lesions.new, infection == "Y"))
+Anova(EWDSS.model.new)
+
+p <- ggplot(mesocosm.lesions.new, aes(x = site, y = lesion.presence/(lesion.presence+lesion.absence), fill = infection)) +
+  scale_fill_manual(values = c("white", "black")) +
+  #geom_violin(position = position_dodge(1)) +
+  geom_dotplot(binaxis = 'y', stackdir = 'center', position = position_dodge(1), dotsize  = 0.5) +
+  stat_summary(fun.y = mean, geom = "point", size = 1, color = "red", position = position_dodge(1)) +
+  labs(x = "site.", y = "infected") +
+  ylim(0,1) +
+  theme_classic()
+p
+
+##old leaves
+EWDSS.model.old <- glm(cbind(lesion.presence, lesion.absence) ~ site + mesocosm, family = binomial, data = filter(mesocosm.lesions.old, infection == "Y"))
+Anova(EWDSS.model.old)
+
+summary(glht(EWDSS.model.old, mcp(site ="Tukey")))
+
+leastsquares2old = lsmeans::lsmeans(EWDSS.model.old,
+                                 pairwise ~ site,
+                                 adjust = "tukey")
+leastsquares2old$contrasts
+lsmeans::cld(leastsquares2old,
+             alpha = 0.05,
+             type = "response",
+             Letters = letters,
+             adjust = "tukey")
+
+p <- ggplot(mesocosm.lesions.old, aes(x = site, y = lesion.presence/(lesion.presence+lesion.absence), fill = infection)) +
+  scale_fill_manual(values = c("white", "black")) +
+  #geom_violin(position = position_dodge(1)) +
+  geom_dotplot(binaxis = 'y', stackdir = 'center', position = position_dodge(1), dotsize  = 0.5) +
+  stat_summary(fun.y = mean, geom = "point", size = 1, color = "red", position = position_dodge(1)) +
+  labs(x = "site.", y = "infected") +
+  ylim(0,1) +
+  theme_classic()
+p
+
+#leaf appearance by site
+la.model <- aov(exp.day.appeared ~ site, data = mesocosm.lesions)
+Anova(la.model)
+
+##Adaptation to disease risk
+m.ewdss.risk <- glm(cbind(lesion.presence, lesion.absence) ~ field.prevalence * infection + exp.day.appeared, family = binomial, data = filter(mesocosm.lesions))
+Anova(m.ewdss.risk, test = "LR")
+
+p <- ggplot(mesocosm.lesions, aes(x = field.prevalence, y = lesion.presence/(lesion.presence+lesion.absence), color = infection)) +
+  scale_color_manual(values = c("gray", "black")) +
+  #geom_violin(position = position_dodge(1)) +
+  #geom_dotplot(dotsize = 0.5) +
+  geom_smooth(method = lm, se = F, fullrange = T) +
+  stat_summary(fun.y = mean, geom = "point", size = 1) +
+  labs(x = "Field prevalence", y = "infected") +
+  xlim(0,1) +
+  theme_classic()
+p
 
 ```
 
+
 #FIELD
 ###Prevalence
-```{r}
+```{r eval = FALSE, echo = FALSE}
 ##2016
-p <- ggplot(filter(field.leaf, year == "2016"), aes(x = site, y = lesion.present)) + 
+p <- ggplot(filter(field.quad, canopy.height != 130.4 & canopy.height != 107.75 & canopy.height != 32.9), aes(x = canopy.height, y = prevalence, color = site)) +
+  scale_color_manual(values = c("gray40","gray60", "gray90", "black")) +
+  geom_point() +
+  geom_smooth(method = lm, se = F, fullrange = F) +
+  theme_classic()
+p
+
+p <- ggplot(field.quad, aes(x = site, y = lesion.present/10)) + 
   #scale_fill_manual(values = c("white", "gray")) +
-  geom_violin(position = position_dodge(1)) +
-  geom_dotplot(binaxis = 'y', stackdir = 'center', position = position_dodge(1), dotsize  = 0.5) +
-  stat_summary(fun.y = mean, geom = "point", size = 3, color = "red", position = position_dodge(1)) +
+  geom_boxplot(position = position_dodge(1)) +
+  #geom_dotplot(binaxis = 'y', stackdir = 'center', position = position_dodge(1), dotsize  = 0.5) +
+  stat_summary(fun.y = mean, geom = "point", size = 3, color = "black", position = position_dodge(1)) +
   labs(x = "Source Site", y = "Proportion seagrass infected") +
   theme_classic()
 p
@@ -717,23 +1020,29 @@ anova(m.prevalence, test = "LR") #significant effect of site
 Anova(m.prevalence) ##use this for P values (package = car)
 summary(m.prevalence)
 
+##******* THIS IS THE 'MASTER' MODEL  ******
+m.prevalence <- glm(cbind(lesion.present, lesion.absent) ~ site, family = binomial, data = field.quad)
+Anova(m.prevalence, test = "LR")
+
 summary(glht(m.prevalence, mcp(site="Tukey")))
 
 #Multiple regression approach with length, density as fixed effects, and a random effect of quad ... or is this an ANCOVA
-m.prevalence2.full <- glmer(cbind(lesion.present, lesion.absent) ~ length.cm + density.decm + (1|site) + (1|quad.unique), family = binomial, data = field.leaf.2016)
+m.prevalence2.full <- glmer(cbind(lesion.present, lesion.absent) ~ length.cm + density.decm + site + (1|quad.unique), family = binomial, data = field.leaf.2016)
 Anova(m.prevalence2.full)
 
 #Multiple regression with canopy.height and density and random effect of site (using quad level data)
-m.prevalence.quad <- lmer(prevalence ~ canopy.height + density.decm + (1|site), data = field.quad)
-anova(m.prevalence.quad)
+m.prevalence.quad <- lmer(prevalence ~ canopy.height + density + (1|site), data = field.quad)
+Anova(m.prevalence.quad)
 
 #Multiple regression with canopy.height and density and a fixed blocking effect of site (using quad level data)
-m.prevalence.quad <- aov(prevalence ~ canopy.height + density.decm + site, data = field.quad) #density not significant so removed from model?
-anova(m.prevalence.quad)
+m.prevalence.quad <- glm(cbind(lesion.present, lesion.absent) ~ canopy.height + density + site, family = binomial, data = field.quad) #density not significant so removed from model?
+Anova(m.prevalence.quad)
 summary(m.prevalence.quad)
 shapiro.test(residuals(m.prevalence.quad)) #pass
 plot(m.prevalence.quad) #distribution looks ok
 hist(residuals(m.prevalence.quad), main = '')
+
+summary(glht(m.prevalence.quad, mcp(site="Tukey")))
 
 posthoc.prevalence.quad <- TukeyHSD(m.prevalence.quad)
 posthoc.prevalence.quad
@@ -813,8 +1122,8 @@ Anova(m.prevalence) ##use this for P values (package = car)
 ```
 
 ###Density
-```{r}
-p <- ggplot(field.quad, aes(x = site, y = density.decm*100)) + 
+```{r eval = FALSE, echo = FALSE}
+p <- ggplot(field.quad, aes(x = site, y = density)) + 
   #scale_fill_manual(values = c("white", "gray")) +
   geom_violin(position = position_dodge(1)) +
   geom_dotplot(binaxis = 'y', stackdir = 'center', position = position_dodge(1), dotsize  = 0.5) +
@@ -825,8 +1134,8 @@ p
 
 plot(density.decm ~ prevalence, field.quad)
 
-m.density <- aov(density.decm ~ site, data = field.quad)
-anova(m.density) #no significant effects
+m.density <- aov(density ~ site, data = field.quad)
+Anova(m.density) #no significant effects
 
 #Summary statistics
 field.density.means <- field.leaf.2016 %>%
@@ -856,11 +1165,11 @@ field.leaf.density.means <- field.quad %>%
 ```
 
 ###Length
-```{r}
+```{r eval = FALSE, echo = FALSE}
 ##2016
 field.leaf$lesion.present.factor <- as.factor(field.leaf$lesion.present)
 
-p <- ggplot(field.leaf.2016, aes(x = site, y = length.cm)) + 
+p <- ggplot(field.quad, aes(x = site, y = canopy.height)) + 
   scale_fill_manual(values = c("white", "gray")) +
   #geom_violin(position = position_dodge(1)) +
   geom_dotplot(binaxis = 'y', stackdir = 'center', position = position_dodge(1), dotsize  = 0.5) +
@@ -882,8 +1191,18 @@ m.length <- lmer(length.cm ~ site * lesion.present.factor + (1|quad.unique), dat
 summary(m.length) #significant effects of site and disease status
 lmerTest::anova(m.length)
 
+m.length <- lmer(length.cm ~ site + (1|quad.unique), data = field.leaf.2016)
+Anova(m.length) #significant effect
+
+m.length <- aov(canopy.height ~ site, data = field.quad)
+Anova(m.length)
+shapiro.test(residuals(m.length)) #pass
+leveneTest(m.length) # pass
+plot(m.length) #distribution looks ok
+hist(residuals(m.length), main = '') #residuals look pretty normal
+
 #posthoc tests
-posthoc.length <- TukeyHSD(aov(length.cm ~ site, data = field.leaf.2016))
+posthoc.length <- TukeyHSD(aov(canopy.height ~ site, data = field.quad))
 posthoc.length
 multcompLetters(posthoc.length$`site`[,"p adj"])
 
@@ -894,9 +1213,9 @@ length.cld <- cld(length.lsmo, adjust = 'tukey')
 length.cld
 
 #summary statistics
-field.length.summary <- field.leaf.2016 %>%
+field.length.summary <- field.quad %>%
   group_by(site) %>%
-  summarize(length.mean = mean(length.cm, na.rm = T), length.se = se(length.cm, na.rm = T))
+  summarize(length.mean = mean(canopy.height, na.rm = T), length.se = se(canopy.height, na.rm = T))
 
 #DC, NB, LP length
 (78.61+66.65+70.74)/3 #= 72
@@ -908,7 +1227,7 @@ field.length.summary <- field.leaf.2016 %>%
 ```
 
 ###leaf number
-```{r}
+```{r eval = FALSE, echo = FALSE}
 m.leaf.number <- lmer(no.leaves ~ site + lesion.present.factor + (1|quad.unique), data = field.leaf.2016)
 summary(m.leaf.number) #significant effects of site and disease status
 lmerTest::anova(m.leaf.number)
@@ -937,11 +1256,20 @@ field.leaf.number.summary <- field.leaf.2016 %>%
 
 
 ##Environmental Variables
-```{r}
+```{r eval = FALSE, echo = FALSE}
 # function to extract raster data within a radius defined by buffer (in meters...10000m = 10km)
-buff <- function(rast,buffer=500) {
-  unlist(lapply(extract( rast, T2.geo, buffer=buffer ),mean,na.rm=T))
+buff <- function(rast,buffer=10000) {
+  unlist(lapply(extract(rast, T2.geo, buffer=buffer ),mean,na.rm=T))
 }
+
+buffse <- function(rast,buffer=10000) {
+  unlist(lapply(extract(rast, T2.geo, buffer=buffer ),se,na.rm=T))
+}
+
+
+#buff <- function(rast,buffer=10000) {
+  #unlist(extract(rast, T2.geo, buffer=buffer ))
+#}
 
 ########### Bio-ORACLE ##################
 ##Time period present 2000-2014
@@ -958,6 +1286,9 @@ r2 <- lapply( r, function(rast) crop(rast,e) )
 site <- c("Gloucester", "Nahant", "Manchester", "Beverly")
 Longitude <- c(-70.65592, -70.91579, -70.80609, -70.85843)
 Latitude <- c(42.59711, 42.42063, 42.55913, 42.54487)
+#site <- c("Beverly")
+#Longitude <- c(-70.85843)
+#Latitude <- c(42.54487)
 T2.site.LL <- data.frame(cbind(Longitude, Latitude))
 T2.site.LL$site <- site
 str(T2.site.LL)
@@ -967,14 +1298,18 @@ str(T2.geo)
 
 # Use a buffer over which to look for surrounding cells that might have data and average them
 # This will take a while for many variables
-buffer <- 500 #2km buffer ... no different from 10km buffer
+buffer <- 10000 #2km buffer ... no different from 10km buffer
 
 # Apply the extract function to all rasters
 T2.oracle <- lapply(r2, buff)
+T2.oracle.se <- lapply(r2, buffse)
 
 # combine all of these into a data.frame and give them names
 Environmentals <- data.frame(do.call(cbind, T2.oracle))
-names(Environmentals) <- unlist(strsplit(files,".asc"))
+Environmentals.se <- data.frame(do.call(cbind, T2.oracle.se))
+names(Environmentals) <- c("Present.Surface.Diffuse.attenuation.Max", "Present.Surface.Diffuse.attenuation.Mean", "Present.Surface.Diffuse.attenuation.Min", "Present.Surface.Par.Max", "Present.Surface.Par.Mean", "Present.Surface.Salinity.Max", "Present.Surface.Salinity.Mean", "Present.Surface.Salinity.Min", "Present.Surface.Salinity.Range", "Present.Surface.Temperature.Max", "Present.Surface.Temperature.Mean", "Present.Surface.Temperature.Min", "Present.Surface.Temperature.Range") #need to add se for se function
+
+#unlist(strsplit(files,".asc")) #automatic naming wasn't working because extra blank names in file?
 
 # add the environmental data as additional columns on SubsiteData
 T2.site.Env <- cbind( T2.site.LL, Environmentals)
@@ -1017,9 +1352,76 @@ plot( points, cex=2, add=T, col = "orange" )
 plot( points, pch=1, cex=2, add=T, col = "orange" )
 ```
 
+##Field Mesocosm Synthesis
+```{r eval = FALSE, echo = FALSE}
+##Leaf loss
+m.ll.p <- glm(cbind(lesion.present, lesion.absent) ~ leaf.loss, family = binomial, data = field.site.mean)
+Anova(m.ll.p, test = "LR")
+
+m.ll.p <- lm(p.mean ~ leaf.loss, data = field.site.mean)
+Anova(m.ll.p)
+
+p <- ggplot(field.site.mean, aes(x = leaf.loss, y = prevalence)) +
+  #scale_color_manual(values = c("gray40","gray60", "gray90", "black")) +
+  geom_point() +
+  geom_smooth(method = lm, se = F, fullrange = F, color = "black") +
+  theme_classic()
+p
+
+## transmission
+m.t.p <- glm(cbind(lesion.present, lesion.absent) ~ transmission, family = binomial, data = field.site.mean)
+Anova(m.t.p, test = "LR")
+
+m.t.p <- lm(p.mean ~ transmission, data = field.site.mean)
+Anova(m.t.p)
+
+p <- ggplot(field.site.mean, aes(x = transmission, y = prevalence)) +
+  #scale_color_manual(values = c("gray40","gray60", "gray90", "black")) +
+  geom_point() +
+  geom_smooth(method = lm, se = F, fullrange = F, color = "black") +
+  theme_classic()
+p
+
+##shoot density
+m.sd.p <- glm(cbind(lesion.present, lesion.absent) ~ shoot.density.mean, family = binomial, data = field.site.mean)
+Anova(m.sd.p, test = "LR")
+
+##leaf density
+m.ld.p <- glm(cbind(lesion.present, lesion.absent) ~ leaf.density.mean, family = binomial, data = field.site.mean)
+Anova(m.ld.p, test = "LR")
+
+m.ld.p <- lm(p.mean ~ leaf.density.mean, data = field.site.mean)
+Anova(m.ld.p)
+
+p <- ggplot(field.quad, aes(x = leaf.density, y = prevalence)) +
+  #scale_color_manual(values = c("gray40","gray60", "gray90", "black")) +
+  geom_point() +
+  geom_smooth(method = lm, se = F, fullrange = F, color = "black") +
+  theme_classic()
+p
+
+##Canopy Height
+m.ch.p <- lm(m.ll.p$residuals ~ length.mean, data = field.site.mean)
+Anova(m.ch.p)
+
+p <- ggplot(field.site.mean, aes(x = length.mean, y = -m.ll.p$residuals)) +
+  #scale_color_manual(values = c("gray40","gray60", "gray90", "black")) +
+  geom_point() +
+  geom_smooth(method = lm, se = F, fullrange = F, color = "black") +
+  theme_classic()
+p
+
+m.t.ch <- lm(length.mean ~ leaf.loss, data = field.site.mean)
+Anova(m.t.ch)
+
+##multiple regression????
+m.multi.p <- glm(cbind(lesion.present, lesion.absent) ~ leaf.loss + transmission + shoot.density.mean, family = binomial, data = field.site.mean)
+Anova(m.multi.p, test = "LR")
+```
+
 
 #MODEL
-```{r}
+```{r eval = FALSE, echo = FALSE}
 #using significant diff means in model
 
 #Function for disease model
@@ -1109,19 +1511,133 @@ lines(r.T1[,1], (r.T1[,5] + r.T1[,9])/461, t = "l", col = "blue")
 #plot(r.T1[,2]+r.T1[,3] ~ r.T1[,1], t = "l", ylim = c(0,3000), ylab = "number of leaves", xlab = "time")
 ```
 
+##Simulated Annealing
+```{r eval = FALSE}
+#Simulated Annealing
+##Function for SA disease model
+solve.Disease.SA <- function(t, y, parms) {
+  y[y < 0] <- 0
+  with(c(parms, y), {
+     y[y < 0] <- 0
+     dS <- a - b * S * I
+     dI <- b * S * I - mi * I
+     dD <- mi * I
+     return(list(c(dS, dI, dD)))
+  })
+}
+
+#a = leaf production rate, eelgrass produces leaves independent of number of leaves present
+#b = transmission rate
+#mi = infected leaf mortality rate (no healthy leaf mortality rate because leaves always infected before mortality)
+
+##Uploading data
+mesocosm.transmission <- read.csv("transmission.SimA.model.csv")
+mesocosm.transmission.CB <- mesocosm.transmission[c(1:11), c(2,37:39)]
+mesocosm.transmission.LP <- mesocosm.transmission[c(12:22), c(2,37:39)]
+mesocosm.transmission.NB <- mesocosm.transmission[c(23:33), c(2,37:39)]
+mesocosm.transmission.WB <- mesocosm.transmission[c(34:44), c(2,37:39)]
+
+##Cost function
+cost_function <- function(x, times, N0, data) {
+  a <- x[1]
+  b <- x[2]
+  mi <- x[3]
+  if (a > 0 & b > 0 & mi > 0) {
+    sim <-ode(y = N0, t = times, func = solve.Disease.SA, parms = list(a = x[1], b = x[2], mi = x[3]), method = "ode45")[c(1,2,3,4,5,6,8,11,15,22,29),]
+    if (NROW(sim) == NROW(data)) {
+      rmse <- sqrt(mean((as.numeric(data[,2] - (sim[,2])))^2)) + sqrt(mean((as.numeric(data[,3] - (sim[,3])))^2)) + sqrt(mean((as.numeric(data[,4] - (sim[,4])))^2))
+    } else {
+      rmse <- Inf
+    }
+  } else {
+    rmse <- Inf
+  }
+}
+
+##Acceptance function
+acceptance <- function(cost_curr, cost_prop, temp) {
+  if (cost_prop < cost_curr) {
+    prob_accept <- 1
+  } else {
+    prob_accept <- exp(-(cost_prop - cost_curr)/temp)
+  }
+  return(prob_accept)
+}
+
+##simulated annealing (main simulation function)
+sim_annealing <- function(I, tc, tr, data, times, N0) {
+  rmse <- numeric(length = I); pars <- matrix(nrow = I, ncol = 3)
+  colnames(pars) <- c("a", "b", "mi")
+  x_curr <- c(runif(1, min = 0, max = 1), runif(1, min = 0, max = 1), runif(1, min = 0, max = 1))
+  rmse_curr <- cost_function(x_curr, times, N0, data)
+  
+  for (i in 1:I) {
+    temp <- tc * exp(- tr * i / I)
+    x_prop <- c(runif(1, min = 0, max = 1), runif(1, min = 0, max = 1), runif(1, min = 0, max = 1))
+    rmse_prop <- cost_function(x_prop, times, N0, data)
+    
+    if (acceptance(rmse_curr, rmse_prop, temp) >= runif(1)) {
+      x_curr <- x_prop
+      rmse_curr <- rmse_prop
+    }
+    pars[i, ] <- x_curr
+    rmse[i] <- rmse_curr
+  }
+  return(list(x = x_curr, pars = pars, rmse = rmse))
+}
+
+
+##Trace plot
+trace_plot <- function(x, burnin = 0) {
+  names <- colnames(x)
+  n <- ncol(x)
+  par(mfrow = c(n, 2))
+  for (i in 1:n) {
+    plot(x[, i], type = "l", xlab = "Iterations", ylab = names[i], ylim = range(x[, i]), main = paste0("Trace of ", names[i]))
+    d <- density(x[, i])
+    plot(d$y, d$x, xlab = "Density", ylab = names[i], type = "l", ylim = range(x[, i]), main = paste0("Density of ", names[i]))
+    abline(h = x[nrow(x), i], col = "red")
+  }
+}
+
+##Running Simulations
+#set.seed(1)
+data <- mesocosm.transmission.LP
+times <- 0:28
+N0 <- c(S = 2.58, I = 1, D = 0) #averages from eelgrass at 0 time point of experiment
+sims <- sim_annealing(I = 10^4, tc = 10^8, tr = 20, data, times, N0)
+
+trace_plot(sims$pars)
+
+sims$pars[1000,]
+sims$x
+
+## running model with parameters from sim
+sim.final <-ode(y = N0, t = times, func = solve.Disease.SA, parms = list(a = 0.076, b = 0.213, mi = 0.035), method = "ode45")[c(1,2,3,4,5,6,8,11,15,22,29),]
+
+## Plotting data
+par(mfrow = c(1,1))
+plot(mean.s ~ Day, data = mesocosm.transmission.LP, col = "green", ylim = c(0,5)) #Experiment susceptible
+points(mean.i ~ Day, data = mesocosm.transmission.LP, col = "red") #Experiment infected
+points(mean.d ~ Day, data = mesocosm.transmission.LP) #Experiment dead
+points(S ~ time, data = sim.final, t = "l", col = "green") #simulated susceptible
+points(I ~ time, data = sim.final, t = "l", col = "red") #simulated infected
+points(D ~ time, data = sim.final, t = "l") #simulated dead
+```
+
 
 
 
 #Day0 Analyses
 
 ##Data manipulation
-```{r Day0 Data Manipulation}
+```{r eval = FALSE, echo = FALSE}
 mesocosm.leaf.d0 <- filter(mesocosm.leaf, experiment.day == "0")
 str(mesocosm.leaf.d0)
 ```
 
 ##Lesion Spread Figures and Analyes
-```{r Day0 Lesion Presence}
+```{r eval = FALSE, echo = FALSE}
 #Figures
   ##Infection proportion ~ site * leaf.no
 bargraph.CI(x.factor = exp.leaf.no, group = site, response = lesion.presence, data = mesocosm.leaf.d0, ylim = c(0,1), ylab = "Proportion of leaves with lesions", xlab = "Leaf number", legend = T)
@@ -1146,7 +1662,7 @@ anova(model.lesion.presence, test = "LR")
 
 
 ##Lesion Percent Cover Figures and Analyses
-```{r Day0 Lesion Percent Cover}
+```{r eval = FALSE, echo = FALSE}
 #Figures
 
   ##Lesion Percent Cover ~ Site * Leaf.no
@@ -1171,7 +1687,7 @@ anova(model.lesion.pc.d0.all.plants) #no effects significant and NO ERRORS in mo
 ```
 
 ##Length Figures and Analyses
-```{r Day0 Leaf Length}
+```{r eval = FALSE, echo = FALSE}
 #Figures
 
   ##Shoot Length ~ infection *site
@@ -1200,7 +1716,7 @@ anova(model.length.cm.d0.L123) ##not change in results; error message goes away 
 #Day5 Analyses
 
 ##Data manipulation
-```{r Day5 Data Manipulation}
+```{r eval = FALSE, echo = FALSE}
 d1.d5 <- filter(d1, experiment.day == "5" & mesocosm != "28")
 str(d1.d5)
 
@@ -1283,7 +1799,7 @@ str(d5.leaves.ef.fig)
 ```
 
 ##Lesion Spread Figures and Analyes
-```{r Day5 Lesion Presence}
+```{r eval = FALSE, echo = FALSE}
 #Figures
 
  ##Infection proportion ~ infection treatment * leaf.no
@@ -1301,7 +1817,7 @@ bargraph.CI(x.factor = exp.leaf.no, group = site.x, response = lesion.presence.x
 ```
 
 ##Lesion Percent Cover Figures and Analyses
-```{r Day5 Lesion Percent Cover}
+```{r eval = FALSE, echo = FALSE}
 #Figures
 
   ## Lesion percent cover effect size ~ leaf.no (grouped by site)
@@ -1353,7 +1869,7 @@ anova(model.lesion.pc.control.d5)
 ```
 
 ##Leaf Growth Figures and Analyses
-```{r Day5 Leaf Growth}
+```{r eval = FALSE, echo = FALSE}
  ## Growth effect size ~ leaf.no (grouped by site)
 fig.growth <- barplot(c(0,0), names = d5.ef.fig$exp.leaf.no[1:2] , ylim = c(-1, 1),
                   ylab = "Effect size of disease on leaf growth",
@@ -1376,7 +1892,7 @@ anova(model.growth.std.d5) #Significant interactions: site*leaf number and Infec
 ```
 
 ##Change in leaf number Figures and Analyses
-```{r Day5 Leaf Number}
+```{r eval = FALSE, echo = FALSE}
 #Figures
 
 ##Change in leaves (effect size)
@@ -1429,7 +1945,7 @@ anova(model.leaves.lost.d5) #Significant main effect of infection, marginal effe
 
 #Day28 Analyses
 ##Data manipulation
-```{r Day28 Data Manipulation}
+```{r eval = FALSE, echo = FALSE}
 mesocosm.leaf.d28 <- filter(mesocosm.leaf, experiment.day == "28")
 str(mesocosm.leaf.d28)
 
@@ -1624,7 +2140,7 @@ d1.shoot.ef.rhiz <-subset(d1.shoot.ef.rhiz, infection == "Y")
 ```
 
 ##Lesion Spread Figures and Analyes
-```{r Day28 Lesion Presence}
+```{r eval = FALSE, echo = FALSE}
 #Figures (*Only infected)
  ##Infection proportion ~ leaf.no
 bargraph.CI(x.factor = exp.leaf.no, response = lesion.presence, data = d1.d28.disease, ylim = c(0,1.1), ylab = "Proportion of leaves with lesions", xlab = "exp.leaf.no")
@@ -1636,7 +2152,7 @@ bargraph.CI(x.factor = site, group = exp.leaf.no, response = lesion.presence, da
 ```
 
 ##Lesion Percent Cover Figures and Analyses
-```{r Day28 Lesion Percent Cover}
+```{r eval = FALSE, echo = FALSE}
 #Figures
 
   ##Lesion Percent Cover ~ Infection * Leaf.no,
@@ -1655,7 +2171,7 @@ anova(model.lesion.pc.d28) ##Significant interaction: infection*leaf number, les
 ```
 
 ##Leaf Growth Figures and Analyses
-```{r Day28 Leaf Growth}
+```{r eval = FALSE, echo = FALSE}
 #Total leaf growth
   ##FIGURES
     ###growth effect size
@@ -1729,7 +2245,7 @@ anova(model.growth.std.d5d28.L1) #Significant interactions: site*leaf number and
 
 
 ##Change in leaf number Figures and Analyses
-```{r Day28 Leaf Number}
+```{r eval = FALSE, echo = FALSE}
 #Figures
 
   ##Change in leaves ~ site*infection
@@ -1760,7 +2276,7 @@ anova(model.leaves.lost.d28) # Significant interaction between infection and sit
 ```
 
 ## Biomass Figures and Analysis
-```{r Day28 Biomass}
+```{r eval = FALSE, echo = FALSE}
 #Figures
   ##Effect Size
     ###Effect Size ~ Infection x site
@@ -1801,7 +2317,7 @@ anova(model.biomass.C)
 
 
 ##Rhizome Figures and Analyses
-```{r Day28 Rhizome Growth}
+```{r eval = FALSE, echo = FALSE}
 #Figures
   ##Effect Size
     ###Effect Size ~ Infection x site
@@ -1826,7 +2342,7 @@ anova(model.rhizome.growth) #mesocosm not significant so removed from the model
 ##Home VS. Away
 
 ###Data management
-```{r Day28 Home vs. Away Data Management}
+```{r eval = FALSE, echo = FALSE}
 
 d1.shoot.ef.tb$hva <- NA
 d1.shoot.ef.tb$hva[d1.shoot.ef.tb$site == "DC"] <- "home"
@@ -1843,7 +2359,7 @@ d1.shoot$hva[d1.shoot$site == "WB"] <- "away"
 ```
 
 ###Biomass Figures and Analysis
-```{r Day28 Home vs. Away Biomass}
+```{r eval = FALSE, echo = FALSE}
 #Figures
   ##Effect Size
     ###Effect Size ~ Infection x site
@@ -1882,7 +2398,7 @@ anova(model.biomass.C)
 
 #Environment Analysis
 ##Data manipulation
-```{r Environment Data manipulation}
+```{r eval = FALSE, echo = FALSE}
 d1.env$mesocosm <- as.factor(d1.env$mesocosm)
 
 str(d1.env)
@@ -1899,7 +2415,7 @@ d1.env.summary.F <- subset(d1.env.summary, infection == "DC")
 ```
 
 ## Temperature Figures and Analyses
-```{r Temperature}
+```{r eval = FALSE, echo = FALSE}
 #Full summer figures
 plot(dfull.env$sample.no, dfull.env$Temp.C,
      ylim = range(c(5, 25)),
@@ -1932,7 +2448,7 @@ arrows(d1.env.summary.I$day, d1.env.summary.I$mean.T - d1.env.summary.I$sd.T, d1
 ```
 
 ## Salinity Figures and Analyses
-```{r Salinity}
+```{r eval = FALSE, echo = FALSE}
 #Figures
 plot(d1.env.summary.I$day, d1.env.summary.I$mean.S,
      ylim = range(c(30,34)),
@@ -1950,7 +2466,7 @@ arrows(d1.env.summary.C$day, d1.env.summary.C$mean.S - d1.env.summary.C$sd.S, d1
 
 #Field Data
 ##Data manipulation
-```{r Field Data Manipulation}
+```{r eval = FALSE, echo = FALSE}
 str(d1.field)
 d1.field$quad <- as.factor(d1.field$quad)
 
@@ -1975,7 +2491,7 @@ d1.field.quad <- merge(d1.field.quad, d1.field.qs, all.x = T)
 ```
 
 ##Figures
-```{r FieldFigures}
+```{r eval = FALSE, echo = FALSE}
 #Site * Length
 bargraph.CI(x.factor = site, response = mean.length, data = d1.field.quad, ylab = "Length (cm)", xlab = "Site", ylim = c(0,150))
 
@@ -2086,7 +2602,7 @@ map.scale(-72, 42, ratio = FALSE)
 ```
 
 ##Dorothy Cove Depth Prevalence analyses/Figures
-```{r}
+```{r eval = FALSE, echo = FALSE}
 
 #Test of variation in proportion across depth
 disease <- c(21, 53, 72)
@@ -2164,7 +2680,7 @@ bargraph.CI(x.factor = depth, response = lesion.pc.2, data = d1.dc.field, ylim =
 ############################################################################################
 
 #Data manipulation
-```{r}
+```{r eval = FALSE, echo = FALSE}
 # ###NEED TO FIX THIS AROUND TO INCORPORATE NEW DATA MANAGEMENT STRATEGY 1/11/17 :) :P
 # 
 # #change per leaf
@@ -2302,7 +2818,7 @@ bargraph.CI(x.factor = depth, response = lesion.pc.2, data = d1.dc.field, ylim =
 
 # Initial Shoot Morphology Analyses and Figures
 ##Leaf Number
-```{r}
+```{r eval = FALSE, echo = FALSE}
 # str(d1.shoot)
 # 
 # #Initial Leaf Number ~ treatment x Site x Mesocosm
@@ -2333,7 +2849,7 @@ bargraph.CI(x.factor = depth, response = lesion.pc.2, data = d1.dc.field, ylim =
 ```
 
 ##leaf Length
-```{r}
+```{r eval = FALSE, echo = FALSE}
 #Leaf length ~ site * treatment * leaf.no
 # bargraph.CI(x.factor = leaf.no, group = infection, response = length.d0, data =  filter(d1, leaf.no != "5"), ylim = c(0,30), ylab = "Leaf length", xlab = "Site", legend = TRUE)
 # 
@@ -2358,7 +2874,7 @@ bargraph.CI(x.factor = depth, response = lesion.pc.2, data = d1.dc.field, ylim =
 
 
 #Delta Length Figures
-```{r}
+```{r eval = FALSE, echo = FALSE}
 #   #library(sciplot)
 # 
 # ###NOTE - only examined leaves 1 and 2 in order to capture all plants analyzed
@@ -2383,7 +2899,7 @@ bargraph.CI(x.factor = depth, response = lesion.pc.2, data = d1.dc.field, ylim =
 ```
 
 #Delta Length Analyses
-```{r}
+```{r eval = FALSE, echo = FALSE}
 # model.d2 <- aov(length.d5 ~ infection * site * leaf.no + length.d0 + mesocosm, data = subset(d2, leaf.no == "1" | leaf.no == "2"))
 # anova(model.d2)
 # 
@@ -2422,7 +2938,7 @@ bargraph.CI(x.factor = depth, response = lesion.pc.2, data = d1.dc.field, ylim =
 
 #Delta leaf.no
 ##Day 5 Figures
-```{r}
+```{r eval = FALSE, echo = FALSE}
 # bargraph.CI(x.factor = infection, response = change.leaves, data = d4, ylim = c(-2,2), ylab = "Change in leaf number over 5 days", xlab = "Infection")
 # 
 # bargraph.CI(x.factor = site, response = change.leaves, data = d4, ylim = c(-2,2), ylab = "Change in leaf number over 5 days", xlab = "Site")
@@ -2431,13 +2947,13 @@ bargraph.CI(x.factor = depth, response = lesion.pc.2, data = d1.dc.field, ylim =
 ```
 
 #Day 5 Analyes
-```{r}
+```{r eval = FALSE, echo = FALSE}
 # model.d4 <- aov(no.leaves.d5 ~ infection*site + no.leaves.d0 + mesocosm, data = d4)
 # anova(model.d4)
 ```
 
 ##Day 28 Analyses
-```{r}
+```{r eval = FALSE, echo = FALSE}
 # model.dln28 <- aov(no.leaves.d28 ~ infection * site + no.leaves.d0 + mesocosm, data = d4)
 # anova(model.dln28)
 # 
@@ -2452,7 +2968,7 @@ bargraph.CI(x.factor = depth, response = lesion.pc.2, data = d1.dc.field, ylim =
 ```
 
 ##Day 28 Figures
-```{r}
+```{r eval = FALSE, echo = FALSE}
 # bargraph.CI(x.factor = site, group = infection, response = change.leaves.d28, data = d4, ylim = c(-4,4), ylab = "Change in leaf number over 28 days", xlab = "Site", legend = T)
 # 
 # bargraph.CI(x.factor = site, group = infection, response = new.leaves.d28, data = d4, ylim = c(0,4), ylab = "New leaves produced over 28 days", xlab = "Site", legend = T)
@@ -2462,7 +2978,7 @@ bargraph.CI(x.factor = depth, response = lesion.pc.2, data = d1.dc.field, ylim =
 
 
 #Lesion Figures
-```{r}
+```{r eval = FALSE, echo = FALSE}
 # #Lesion area
 #   ##Infection x Site
 # bargraph.CI(x.factor = site, group = infection, response = lesion.area.d5, data = d3.mean, ylim = c(0,10), ylab = "Lesion area (cm2) after 5 days infection", xlab = "Site", legend = TRUE)
@@ -2483,7 +2999,7 @@ bargraph.CI(x.factor = depth, response = lesion.pc.2, data = d1.dc.field, ylim =
 ```
 
 #Lesion Analyses
-```{r}
+```{r eval = FALSE, echo = FALSE}
 ##Area.cm2
 # model.d3.A <- aov(lesion.area.d5 ~ infection * site * leaf.no + mesocosm, data = subset(d3, leaf.no == "1" | leaf.no == "2"))
 # anova(model.d3.A)
@@ -2501,7 +3017,7 @@ bargraph.CI(x.factor = depth, response = lesion.pc.2, data = d1.dc.field, ylim =
 ```
 
 #Biomass Figures
-```{r}
+```{r eval = FALSE, echo = FALSE}
 # #Total biomass: infection x site
 # bargraph.CI(x.factor = site, group = infection, response = b.t.d28, data = d1.shoot, ylab = "Total biomass (g)", xlab = "Site", ylim = c(0,1), legend = TRUE)
 # 
@@ -2516,7 +3032,7 @@ bargraph.CI(x.factor = depth, response = lesion.pc.2, data = d1.dc.field, ylim =
 ```
 
 #Biomass (d.28) analyses
-```{r}
+```{r eval = FALSE, echo = FALSE}
 # #total biomass
 # model.biomass.A <- aov(b.t.d28 ~ infection * site + mesocosm, data = d1.shoot)
 # anova(model.biomass.A)
@@ -2532,7 +3048,7 @@ bargraph.CI(x.factor = depth, response = lesion.pc.2, data = d1.dc.field, ylim =
 ```
 
 #Rhizome length (d.28 analyses)
-```{r}
+```{r eval = FALSE, echo = FALSE}
 # bargraph.CI(x.factor = site, group = infection, response = rhizome.length.cm.D28-rhizome.length.cm.D0, data = filter(d1.shoot, rhizome.length.cm.D0 != "NA"), ylim = c(0,8), ylab = "Rhizome growth (cm)", xlab = "Site", legend = TRUE)
 # 
 # model.rhizome.growth <- aov(rhizome.length.cm.D28 ~ infection * site, data = filter(d1.shoot, rhizome.length.cm.D0 != "NA"))
