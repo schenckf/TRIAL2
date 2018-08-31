@@ -146,6 +146,10 @@ for (n in 1:length(mesocosm.shoot$site)) {
 
 mesocosm.shoot$rhizome.growth <- (mesocosm.shoot$rhizome.length.final - mesocosm.shoot$rhizome.length.initial)/28 ##Rhizome growth
 
+#leaves lost per day
+mesocosm.shoot$leaf.p <- mesocosm.shoot$no.leaves.new.final/28
+mesocosm.shoot$leaf.l <- mesocosm.shoot$no.leaves.lost.final/28
+
 str(mesocosm.shoot)
 
 ##Leaf growth
@@ -520,7 +524,12 @@ Anova(m.new.leaves)
 leaf.production.means <- mesocosm.shoot %>%
   filter(vase != 17 & vase != 21 & vase != 27 & vase != 29 & vase != 37 & vase != 47 & vase != 59) %>%
   group_by(infection, site) %>%
-  summarize(mean.new.leaves = mean(no.leaves.new.final, na.rm = T), SE.new.leaves = se(no.leaves.new.final, na.rm = T))
+  summarize(mean.new.leaves = mean(no.leaves.new.final, na.rm = T), SE.new.leaves = se(no.leaves.new.final, na.rm = T), SD.new.leaves = sd(no.leaves.new.final, na.rm = T))
+
+leaf.production.per.day.means <- mesocosm.shoot %>%
+  filter(vase != 17 & vase != 21 & vase != 27 & vase != 29 & vase != 37 & vase != 47 & vase != 59) %>%
+  group_by(infection, site) %>%
+  summarize(mean.leaf.p = mean(leaf.p, na.rm = T), SE.leaf.p = se(leaf.p, na.rm = T), SD.leaf.p = sd(leaf.p, na.rm = T))
 
 #leaves produced/leaf: healthy DC, NB, LP
 1.88/3.58 #= 0.53
@@ -566,7 +575,11 @@ lost.leaves.cld
 #Summary statistics
 leaf.loss.means <- mesocosm.shoot %>%
   group_by(infection, site) %>%
-  summarize(mean.lost.leaves = mean(no.leaves.lost.final, na.rm = T), SE.lost.leaves = se(no.leaves.lost.final, na.rm = T))
+  summarize(mean.lost.leaves = mean(no.leaves.lost.final, na.rm = T), SE.lost.leaves = se(no.leaves.lost.final, na.rm = T), SD.lost.leaves = sd(no.leaves.lost.final, na.rm = T))
+
+leaf.loss.per.day.means <- mesocosm.shoot %>%
+  group_by(infection, site) %>%
+  summarize(mean.leaf.l = mean(leaf.l, na.rm = T), SE.leaf.l = se(leaf.l, na.rm = T), SD.leaf.l = sd(leaf.l, na.rm = T))
 
 
 #DC healthy: 1.3/3.58 = 0.36; NB healthy: 0.64/3.58 = 0.18; LP healthy: 0.64/3.58 = 0.18; WB healthy: 0.73/2.64 = 0.28
@@ -1519,33 +1532,41 @@ solve.Disease.SA <- function(t, y, parms) {
   y[y < 0] <- 0
   with(c(parms, y), {
      y[y < 0] <- 0
-     dS <- a - b * S * I
+     dS <- as * S + ai * I - b * S * I #
      dI <- b * S * I - mi * I
      dD <- mi * I
      return(list(c(dS, dI, dD)))
   })
 }
 
-#a = leaf production rate, eelgrass produces leaves independent of number of leaves present
+#as = per healthy leaf, leaf production rate (currently leaf production leaves/time)
+#ai = per infected leaf, leaf production rate (currently ommitted)
 #b = transmission rate
-#mi = infected leaf mortality rate (no healthy leaf mortality rate because leaves always infected before mortality)
+#ms = healthy leaf mortality rate (from healthy SA model, no healthy leaf mortality
+#in disease treatment)
+#mi = infected leaf mortality rate
 
 ##Uploading data
 mesocosm.transmission <- read.csv("transmission.SimA.model.csv")
-mesocosm.transmission.CB <- mesocosm.transmission[c(1:11), c(2,37:39)]
-mesocosm.transmission.LP <- mesocosm.transmission[c(12:22), c(2,37:39)]
-mesocosm.transmission.NB <- mesocosm.transmission[c(23:33), c(2,37:39)]
-mesocosm.transmission.WB <- mesocosm.transmission[c(34:44), c(2,37:39)]
+mesocosm.transmission.CB <- mesocosm.transmission[c(1:11), c(2:35)]
+mesocosm.transmission.LP <- mesocosm.transmission[c(12:22), c(2:35)]
+mesocosm.transmission.NB <- mesocosm.transmission[c(23:33), c(2:35)]
+mesocosm.transmission.WB <- mesocosm.transmission[c(34:44), c(2:35)]
 
 ##Cost function
 cost_function <- function(x, times, N0, data) {
-  a <- x[1]
+  as <- x[1] #ai
   b <- x[2]
   mi <- x[3]
-  if (a > 0 & b > 0 & mi > 0) {
-    sim <-ode(y = N0, t = times, func = solve.Disease.SA, parms = list(a = x[1], b = x[2], mi = x[3]), method = "ode45")[c(1,2,3,4,5,6,8,11,15,22,29),]
+  ai <- x[4]
+  if (as > 0 & b > 0 & mi > 0 & ai > 0) {  #
+    sim <-ode(y = N0, t = times, func = solve.Disease.SA,
+              parms = list(as = x[1], b = x[2], mi = x[3], ai = x[4]), #
+              method = "ode45")[c(1,2,3,4,5,6,8,11,15,22,29),]
     if (NROW(sim) == NROW(data)) {
-      rmse <- sqrt(mean((as.numeric(data[,2] - (sim[,2])))^2)) + sqrt(mean((as.numeric(data[,3] - (sim[,3])))^2)) + sqrt(mean((as.numeric(data[,4] - (sim[,4])))^2))
+      rmse <- sqrt(mean((as.numeric(data[,2] - (sim[,2])))^2)) +
+        sqrt(mean((as.numeric(data[,3] - (sim[,3])))^2)) +
+        sqrt(mean((as.numeric(data[,4] - (sim[,4])))^2))
     } else {
       rmse <- Inf
     }
@@ -1566,14 +1587,16 @@ acceptance <- function(cost_curr, cost_prop, temp) {
 
 ##simulated annealing (main simulation function)
 sim_annealing <- function(I, tc, tr, data, times, N0) {
-  rmse <- numeric(length = I); pars <- matrix(nrow = I, ncol = 3)
-  colnames(pars) <- c("a", "b", "mi")
-  x_curr <- c(runif(1, min = 0, max = 1), runif(1, min = 0, max = 1), runif(1, min = 0, max = 1))
+  rmse <- numeric(length = I); pars <- matrix(nrow = I, ncol = 4) #
+  colnames(pars) <- c("as", "b", "mi", "ai") #, "ai"
+  x_curr <- c(runif(1, min = 0, max = 0.01), runif(1, min = 0, max = 1),
+              runif(1, min = 0, max = 1), runif(1, min = 0, max = 0.01)) #
   rmse_curr <- cost_function(x_curr, times, N0, data)
   
   for (i in 1:I) {
     temp <- tc * exp(- tr * i / I)
-    x_prop <- c(runif(1, min = 0, max = 1), runif(1, min = 0, max = 1), runif(1, min = 0, max = 1))
+    x_prop <- c(runif(1, min = 0, max = 0.01), runif(1, min = 0, max = 1),
+                runif(1, min = 0, max = 1), runif(1, min = 0, max = 0.01)) #
     rmse_prop <- cost_function(x_prop, times, N0, data)
     
     if (acceptance(rmse_curr, rmse_prop, temp) >= runif(1)) {
@@ -1593,6 +1616,157 @@ trace_plot <- function(x, burnin = 0) {
   n <- ncol(x)
   par(mfrow = c(n, 2))
   for (i in 1:n) {
+    plot(x[, i], type = "l", xlab = "Iterations", ylab = names[i],
+         ylim = range(x[, i]), main = paste0("Trace of ", names[i]))
+    d <- density(x[, i])
+    plot(d$y, d$x, xlab = "Density", ylab = names[i], type = "l", ylim = range(x[, i]),
+         main = paste0("Density of ", names[i]))
+    abline(h = x[nrow(x), i], col = "red")
+  }
+}
+
+##Running Simulations
+###single data set
+data <- mesocosm.transmission.CB[, c(1, 2, 13, 24)]
+times <- 0:28
+N0 <- c(S = mesocosm.transmission.CB[1, 2], I = 1, D = 0)
+sims <- sim_annealing(I = 10^4, tc = 10^8, tr = 20, data, times, N0) #If you get this error message: #Error in if (cost_prop < cost_curr) { : missing value where TRUE/FALSE needed In addition: Warning messages: 1: In rk(y, times, func, parms, method = "ode45", ...) :Number of time steps 110814 exceeded maxsteps at t = 3.067472: In rk(y, times, func, parms, method = "ode45", ...) : Number of time steps 110804 exceeded maxsteps at t = 2.31483
+#REDUCE THE RANGE OF PARAMETER!!!! UGH
+
+trace_plot(sims$pars)
+
+sims$pars[100,]
+sims$x
+
+str(sims)
+
+sim.final <-ode(y = N0, t = times, func = solve.Disease.SA,
+                parms = list(as = 0.0077, b = 0.2058, mi = 0.0185, ai = 0.0069),
+                method = "ode45")[c(1,2,3,4,5,6,8,11,15,22,29),]
+
+## Plotting data
+par(mfrow = c(1,1))
+plot(s.M1 ~ Day, data = data, col = "green", ylim = c(0,5)) #Experiment susceptible
+points(i.M1 ~ Day, data = data, col = "red") #Experiment infected
+points(d.M1 ~ Day, data = data) #Experiment dead
+points(S ~ time, data = sim.final, t = "l", col = "green") #simulated susceptible
+points(I ~ time, data = sim.final, t = "l", col = "red") #simulated infected
+points(D ~ time, data = sim.final, t = "l") #simulated dead
+
+###multiple data sets
+set.seed(1)
+pars.sim <- matrix(NA, nrow = 11, ncol = 4) #
+for (i in 1:11) {
+  data <- mesocosm.transmission.CB[, c(1,i + 1, i + 12, i + 23)]
+  times <- 0:28
+  N0 <- c(S = mesocosm.transmission.CB[1, i + 1], I = 1, D = 0)
+  sims <- sim_annealing(I = 10^4, tc = 10^8, tr = 20, data, times, N0)
+  pars.sim[i,] <- sims$x
+}
+pars.sim
+
+## running model with parameters from sim
+sim.final <- array(NA, c(11,4,11), )
+for (i in 1:11) {
+  sim.final[, , i] <-ode(y = N0, t = times, func = solve.Disease.SA, parms = list(as = pars.sim[i, 1], b = pars.sim[i, 2], mi = pars.sim[i, 3], ai = pars.sim[i, 4]), method = "ode45")[c(1,2,3,4,5,6,8,11,15,22,29),] #, ai = pars.sim[i,2]
+}
+
+sim.final
+
+par(mfrow = c(1,1))
+  plot(mesocosm.transmission.CB[, 2] ~ mesocosm.transmission.CB[, 1], data = mesocosm.transmission.CB, col = "green", ylim = c(0,5)) #Experiment susceptible
+  for (i in 2:11) {
+    points(mesocosm.transmission.CB[, i + 1] ~ mesocosm.transmission.CB[, 1], data = mesocosm.transmission.CB, col = "green")
+  }
+for (i in 1:11) {
+  points(mesocosm.transmission.CB[, i + 12] ~ mesocosm.transmission.CB[, 1], data = mesocosm.transmission.CB, col = "red") #Experiment infected
+    points(mesocosm.transmission.CB[, i + 23] ~ mesocosm.transmission.CB[, 1], data = mesocosm.transmission.CB) #Experiment dead
+    points(sim.final[,2,i] ~ sim.final[, 1, i], data = sim.final[ , , i], t = "l", col = "green") #simulated susceptible
+    points(sim.final[,3,i] ~ sim.final[, 1, i], data = sim.final[, , i], t = "l", col = "red") #simulated infected
+    points(sim.final[,4,i] ~ sim.final[,1,i], data = sim.final[, , i], t = "l") #simulated dead
+}
+
+##Function for SA healthy model
+solve.Healthy.SA <- function(t, y, parms) {
+  with(c(parms, y), {
+    y[y < 0] <- 0
+    dS <- as * S - ms * S
+    dD <- ms * S
+    return(list(c(dS, dD)))
+  })
+}
+```
+
+##ABC (Approximate Bayesian Computation)
+```{r eval = FALSE, echo = FALSE}
+#ABC
+
+##Function for SA disease model
+solve.Disease.ABC <- function(t, y, parms) {
+  y[y < 0] <- 0
+  with(c(parms, y), {
+     y[y < 0] <- 0
+     dS <- a - b * S * I
+     dI <- b * S * I - mi * I
+     dD <- mi * I
+     return(list(c(dS, dI, dD)))
+  })
+}
+
+#a = leaf production rate, eelgrass produces leaves independent of number of leaves present
+#b = transmission rate
+#mi = infected leaf mortality rate
+
+##Uploading data
+mesocosm.transmission <- read.csv("transmission.SimA.model.csv")
+mesocosm.transmission.CB <- mesocosm.transmission[c(1:11), c(2,37:39)]
+mesocosm.transmission.LP <- mesocosm.transmission[c(12:22), c(2,37:39)]
+mesocosm.transmission.NB <- mesocosm.transmission[c(23:33), c(2,37:39)]
+mesocosm.transmission.WB <- mesocosm.transmission[c(34:44), c(2,37:39)]
+
+##Cost function
+cost_function_ABC <- function(x, sim_pars) {
+  sol <- ode(t = sim_pars$times, parms = list(a = x[1], b = x[2], mi = x[3]), y = sim_pars$N0, func = solve.Disease.ABC, method = "ode45")[c(1,2,3,4,5,6,8,11,15,22,29),]
+  result <- sqrt(mean((sim_pars$data[,2] - sol[,2])^2)) + sqrt(mean((sim_pars$data[,3] - sol[,3])^2)) + sqrt(mean((sim_pars$data[,4] - sol[,4])^2))
+  return(result)
+}
+
+##Acceptance function
+acceptance_ABC <- function(x, sim_pars, tol) {
+  if (any(x <= 0)) {
+    return(FALSE)
+    }
+  sim_data <- cost_function_ABC(x, sim_pars)
+  if (sim_data <= tol) {
+    return(TRUE)
+  } else {
+    return(FALSE)
+    }
+}
+
+mcmc_abc <- function(init_vals = runif(3), sim_pars, hyper_pars, niters = 10000, nchains = 3, tol = 6) {
+  chain <- array(dim = c(niters + 1, nchains, length(init_vals)/nchains))
+  chain[1, , ] <- init_vals
+  for (i in 1:niters) {
+    for (j in 1:nchains) {
+      proposal_pars <- c(rnorm(n = 1, mean = chain[i, j, 1], sd = hyper_pars$sd_a), rnorm(n = 1, mean = chain[i, j, 2], sd = hyper_pars$sd_b), rnorm(n = 1, mean = chain[i, j, 3], sd = hyper_pars$sd_mi))
+      if (acceptance_ABC(proposal_pars, sim_pars, tol)) {
+        chain[i + 1, j, ] <- proposal_pars
+      } else {
+        chain[i + 1, j, ] <- chain[i, j, ]
+      }
+    }
+  }
+  dimnames(chain)[[3]] <- c("a", "b", "mi")
+  return(chain)
+}
+
+#Trace plot ABC
+trace_plot_abc <- function(x, burnin = 0) {
+  names <- colnames(x)
+  n <- ncol(x)
+  par(mfrow = c(n, 2))
+  for (i in 1:n) {
     plot(x[, i], type = "l", xlab = "Iterations", ylab = names[i], ylim = range(x[, i]), main = paste0("Trace of ", names[i]))
     d <- density(x[, i])
     plot(d$y, d$x, xlab = "Density", ylab = names[i], type = "l", ylim = range(x[, i]), main = paste0("Density of ", names[i]))
@@ -1600,32 +1774,38 @@ trace_plot <- function(x, burnin = 0) {
   }
 }
 
-##Running Simulations
-#set.seed(1)
-data <- mesocosm.transmission.LP
+set.seed(10)
+nchains <- 3
+start_values <- cbind(runif(nchains, min =0.033, max = 0.045), runif(nchains, min = 0, max = 1), runif(nchains, min = 0.068, max = 0.078)) #need to calcualte all values in per days!!
+tol <- 1
+data <- mesocosm.transmission.CB
 times <- 0:28
-N0 <- c(S = 2.58, I = 1, D = 0) #averages from eelgrass at 0 time point of experiment
-sims <- sim_annealing(I = 10^4, tc = 10^8, tr = 20, data, times, N0)
+N0 <- c(S = 2.17, I = 1, D = 0)
+sim_pars <- list(N0 = N0, data = data, times = times)
+hyper_pars <- list(sd_a = 0.019, sd_b = 0.05, sd_mi = 0.035)
+posterior <- mcmc_abc(init_vals = start_values, sim_pars = sim_pars, hyper_pars = hyper_pars, niters = 30000, nchains = 3, tol = tol)
 
-trace_plot(sims$pars)
+trace_plot_abc(posterior[, , 2])
 
-sims$pars[1000,]
-sims$x
+#Bayesian Credible Intervals (BCI)
+alpha <- 0.05; burnin <- 2000
+print(bci <- apply(posterior[(burnin + 1):nrow(posterior), , ], 
+                   MARGIN = c(2,3), FUN = function(x)
+                     quantile(x, c(alpha/2, 0.5, 1-alpha/2))))
 
-## running model with parameters from sim
-sim.final <-ode(y = N0, t = times, func = solve.Disease.SA, parms = list(a = 0.076, b = 0.213, mi = 0.035), method = "ode45")[c(1,2,3,4,5,6,8,11,15,22,29),]
+## running model with parameters from ABC
+sol.final.cb <- ode(t = sim_pars$times, parms = list(a = 0.040, b = 0.22, mi = 0.036), y = sim_pars$N0, func = solve.Disease.ABC, method = "ode45")[c(1,2,3,4,5,6,8,11,15,22,29),]
 
 ## Plotting data
 par(mfrow = c(1,1))
-plot(mean.s ~ Day, data = mesocosm.transmission.LP, col = "green", ylim = c(0,5)) #Experiment susceptible
-points(mean.i ~ Day, data = mesocosm.transmission.LP, col = "red") #Experiment infected
-points(mean.d ~ Day, data = mesocosm.transmission.LP) #Experiment dead
-points(S ~ time, data = sim.final, t = "l", col = "green") #simulated susceptible
-points(I ~ time, data = sim.final, t = "l", col = "red") #simulated infected
-points(D ~ time, data = sim.final, t = "l") #simulated dead
+plot(mean.s ~ Day, data = mesocosm.transmission.CB, col = "green", ylim = c(0,5), ylab = "Leaves per plant") #Experiment susceptible
+points(mean.i ~ Day, data = mesocosm.transmission.CB, col = "red") #Experiment infected
+points(mean.d ~ Day, data = mesocosm.transmission.CB) #Experiment dead
+points(S ~ time, data = sol.final.cb, t = "l", col = "green") #simulated susceptible
+points(I ~ time, data = sol.final.cb, t = "l", col = "red") #simulated infected
+points(D ~ time, data = sol.final.cb, t = "l") #simulated dead
+legend("topright", legend = c("Susceptible", "Infected", "Dead"), col = c("green", "red", "black"), lty = 1, cex = 0.5)
 ```
-
-
 
 
 #Day0 Analyses
