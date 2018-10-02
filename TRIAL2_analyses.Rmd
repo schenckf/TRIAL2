@@ -194,6 +194,7 @@ mesocosm.survival <- mesocosm.leaf %>%
   dplyr::select(c(month, year, mesocosm, vase, infection, site, experiment.day, mortality.day, stat)) %>%
   subset(experiment.day == "28") %>%
   group_by(month, year, mesocosm, vase, infection, site) %>%
+  filter(vase != 17 & vase != 21 & vase != 27 & vase != 29 & vase != 37 & vase != 47 & vase != 59 & vase != 81) %>%
   summarize(mortality.day = mean(mortality.day, na.rm = T), stat = mean(stat, na.rm = T)) #%>% ##adding survival analyses data
   #filter(vase != 17 & vase != 21 & vase != 27 & vase != 29 & vase != 37 & vase != 47 & vase != 59)
 
@@ -543,7 +544,7 @@ leaf.production.per.day.means <- mesocosm.shoot %>%
 
 ##Leaf loss
 ```{r eval = FALSE, echo = FALSE}
-p <- ggplot(filter(mesocosm.shoot, vase != 17 & vase != 21 & vase != 27 & vase != 29 & vase != 37 & vase != 47 & vase != 59), aes(x = site, y = no.leaves.lost.final, fill = infection)) + 
+p <- ggplot(filter(mesocosm.shoot, vase != 17 & vase != 21 & vase != 27 & vase != 29 & vase != 37 & vase != 47 & vase != 59), aes(x = site, y = no.leaves.lost.final, fill = infection)) + #removing infected controls
   scale_fill_manual(values = c("white", "gray")) +
   geom_violin(position = position_dodge(1)) +
   geom_dotplot(binaxis = 'y', stackdir = 'center', position = position_dodge(1), dotsize  = 0.5) +
@@ -575,9 +576,11 @@ lost.leaves.cld
 #Summary statistics
 leaf.loss.means <- mesocosm.shoot %>%
   group_by(infection, site) %>%
+  filter(vase != 17 & vase != 21 & vase != 27 & vase != 29 & vase != 37 & vase != 47 & vase != 59) %>%
   summarize(mean.lost.leaves = mean(no.leaves.lost.final, na.rm = T), SE.lost.leaves = se(no.leaves.lost.final, na.rm = T), SD.lost.leaves = sd(no.leaves.lost.final, na.rm = T))
 
 leaf.loss.per.day.means <- mesocosm.shoot %>%
+  filter(vase != 17 & vase != 21 & vase != 27 & vase != 29 & vase != 37 & vase != 47 & vase != 59) %>%
   group_by(infection, site) %>%
   summarize(mean.leaf.l = mean(leaf.l, na.rm = T), SE.leaf.l = se(leaf.l, na.rm = T), SD.leaf.l = sd(leaf.l, na.rm = T))
 
@@ -691,7 +694,7 @@ ag.lsmo.cld
 #Summary statistics
 ag.biomass.means <- mesocosm.shoot %>%
   filter(vase != 17 & vase != 21 & vase != 27 & vase != 29 & vase != 37 & vase != 47 & vase != 59) %>%
-  group_by(infection) %>%
+  group_by(infection, site) %>%
   summarize(mean.ag.biomass = mean(ag.biomass.final, na.rm = T), SE.ag.biomass = se(ag.biomass.final, na.rm = T))
 ```
 
@@ -1524,25 +1527,24 @@ lines(r.T1[,1], (r.T1[,5] + r.T1[,9])/461, t = "l", col = "blue")
 #plot(r.T1[,2]+r.T1[,3] ~ r.T1[,1], t = "l", ylim = c(0,3000), ylab = "number of leaves", xlab = "time")
 ```
 
-##Simulated Annealing
+##(I)Simulated Annealing
 ```{r eval = FALSE}
 #Simulated Annealing
 ##Function for SA disease model
 
-###NEED TO CHANGE MODEL!!!! PER LEAF IS CONFUSING
 solve.Disease.SA <- function(t, y, parms) {
   y[y < 0] <- 0
   with(c(parms, y), {
      y[y < 0] <- 0
-     dS <- as - b * S * I # * S + ai * I (remove per leaf)
+     dS <- ai - b * S * I # as * S + ai * I (remove per leaf)
      dI <- b * S * I - mi # * I remove per leaf
      dD <- mi
      return(list(c(dS, dI, dD)))
   })
 }
 
-#as = per healthy leaf, leaf production rate (currently leaf production leaves/time)
-#ai = per infected leaf, leaf production rate (currently ommitted)
+#as = healthy plant leaf production rate (currently ommited because no healthy plants)
+#ai =diseased plant leaf production rate
 #b = transmission rate
 #ms = healthy leaf mortality rate (from healthy SA model, no healthy leaf mortality
 #in disease treatment)
@@ -1557,12 +1559,12 @@ mesocosm.transmission.WB <- mesocosm.transmission[c(34:44), c(2:35)]
 
 ##Cost function
 cost_function <- function(x, times, N0, data) {
-  as <- x[1] #ai <- x[4]
+  ai <- x[1] #ai <- x[4]
   b <- x[2]
   mi <- x[3]
-  if (as > 0 & b > 0 & mi > 0) {  # & ai > 0
+  if (ai > 0 & b > 0 & mi > 0) {  # & ai > 0
     sim <-ode(y = N0, t = times, func = solve.Disease.SA,
-              parms = list(as = x[1], b = x[2], mi = x[3]), #, ai = x[4]
+              parms = list(ai = x[1], b = x[2], mi = x[3]), #, ai = x[4]
               method = "ode45")[c(1,2,3,4,5,6,8,11,15,22,29),]
     if (NROW(sim) == NROW(data)) {
       rmse <- sqrt(mean((as.numeric(data[,2] - (sim[,2])))^2)) +
@@ -1589,7 +1591,7 @@ acceptance <- function(cost_curr, cost_prop, temp) {
 ##simulated annealing (main simulation function)
 sim_annealing <- function(I, tc, tr, data, times, N0) {
   rmse <- numeric(length = I); pars <- matrix(nrow = I, ncol = 3) #4
-  colnames(pars) <- c("as", "b", "mi") #, "ai"
+  colnames(pars) <- c("ai", "b", "mi") #, "as"
   x_curr <- c(runif(1, min = 0, max = 1), runif(1, min = 0, max = 1),
               runif(1, min = 0, max = 1)) #, runif(1, min = 0, max = 0.1) Change bounds
   rmse_curr <- cost_function(x_curr, times, N0, data)
@@ -1691,7 +1693,7 @@ for (j in 0:3) {
   for (i in 1:11) {
     N0 <- c(S = data.temp.sim[1, i + 1], I = 1, D = 0)
       sim.final[, , (i+(j*11))] <-ode(y = N0, t = times, func = solve.Disease.SA,
-                             parms = list(as = pars.sim.master[i, 1, (j+1)],
+                             parms = list(ai = pars.sim.master[i, 1, (j+1)],
                                         b = pars.sim.master[i, 2, (j+1)],
                                         mi = pars.sim.master[i, 3, (j+1)]),
                            method = "ode45")[c(1,2,3,4,5,6,8,11,15,22,29),] #, ai = pars.sim.master[i, 4, (j+1)]
@@ -1723,8 +1725,9 @@ means.cb <- cbind(mean(pars.sim.master[, 1, 1]), mean(pars.sim.master[, 2, 1]), 
 means.lp <- cbind(mean(pars.sim.master[, 1, 2]), mean(pars.sim.master[, 2, 2]), mean(pars.sim.master[, 3, 2]))
 means.nb <- cbind(mean(pars.sim.master[, 1, 3]), mean(pars.sim.master[, 2, 3]), mean(pars.sim.master[, 3, 3]))
 means.wb <- cbind(mean(pars.sim.master[, 1, 4]), mean(pars.sim.master[, 2, 4]), mean(pars.sim.master[, 3, 4]))
+clabs <- c("ai", "b", "mi")
 
-rbind(means.cb, means.lp, means.nb, means.wb)
+rbind(clabs, means.cb, means.lp, means.nb, means.wb)
 
 se.cb <- cbind(se(pars.sim.master[, 1, 1]), se(pars.sim.master[, 2, 1]), se(pars.sim.master[, 3, 1]))
 se.lp <- cbind(se(pars.sim.master[, 1, 2]), se(pars.sim.master[, 2, 2]), se(pars.sim.master[, 3, 2]))
@@ -1733,7 +1736,10 @@ se.wb <- cbind(se(pars.sim.master[, 1, 4]), se(pars.sim.master[, 2, 4]), se(pars
 
 rbind(se.cb, se.lp, se.nb, se.wb)
 
+```
 
+##(S)Simulated Annealing
+```{r eval = FALSE}
 ##Function for SA healthy model
 solve.Healthy.SA <- function(t, y, parms) {
   with(c(parms, y), {
@@ -1744,16 +1750,330 @@ solve.Healthy.SA <- function(t, y, parms) {
   })
 }
 
+##Uploading data
+mesocosm.transmission.S <- read.csv("transmission.SimA.model.S.csv")
+mesocosm.transmission.CB.S <- mesocosm.transmission.S[c(1:11), c(2:10, 14:21)]
+mesocosm.transmission.LP.S <- mesocosm.transmission.S[c(12:22), c(2:24)]
+mesocosm.transmission.NB.S <- mesocosm.transmission.S[c(23:33), c(2:24)]
+mesocosm.transmission.WB.S <- mesocosm.transmission.S[c(34:44), c(2:8, 14:19)]
+
+##Cost function
+cost_function.S <- function(x, times, N0, data) {
+  as <- x[1]
+  ms <- x[2]
+  if (as >= 0 & ms >= 0) {
+    sim <-ode(y = N0, t = times, func = solve.Healthy.SA,
+              parms = list(as = x[1], ms = x[2]),
+              method = "ode45")[c(1,2,3,4,5,6,8,11,15,22,29),]
+    if (NROW(sim) == NROW(data)) {
+      rmse <- sqrt(mean((as.numeric(data[,2] - (sim[,2])))^2)) +
+        sqrt(mean((as.numeric(data[,3] - (sim[,3])))^2))
+    } else {
+      rmse <- Inf
+    }
+  } else {
+    rmse <- Inf
+  }
+}
+
+##Acceptance function
+acceptance.S <- function(cost_curr, cost_prop, temp) {
+  if (cost_prop < cost_curr) {
+    prob_accept <- 1
+  } else {
+    prob_accept <- exp(-(cost_prop - cost_curr)/temp)
+  }
+  return(prob_accept)
+}
+
+##simulated annealing (main simulation function)
+sim_annealing.S <- function(I, tc, tr, data, times, N0) {
+  rmse <- numeric(length = I); pars <- matrix(nrow = I, ncol = 2) #4
+  colnames(pars) <- c("as", "ms")
+  x_curr <- c(runif(1, min = 0, max = 1), runif(1, min = 0, max = 1)) #Change bounds if error
+  rmse_curr <- cost_function.S(x_curr, times, N0, data)
+  
+  for (i in 1:I) {
+    temp <- tc * exp(- tr * i / I)
+    x_prop <- c(runif(1, min = 0, max = 1), runif(1, min = 0, max = 1)) #Change bounds if error
+    rmse_prop <- cost_function.S(x_prop, times, N0, data)
+    
+    if (acceptance.S(rmse_curr, rmse_prop, temp) >= runif(1)) {
+      x_curr <- x_prop
+      rmse_curr <- rmse_prop
+    }
+    pars[i, ] <- x_curr
+    rmse[i] <- rmse_curr
+  }
+  return(list(x = x_curr, pars = pars, rmse = rmse))
+}
+
+
+##CB
+pars.sim.CB <- matrix(NA, nrow = 8, ncol = 2)
+for (i in 1:8) {
+  data <- mesocosm.transmission.CB.S[, c(1,i + 1, i + 9)]
+  times <- 0:28
+  N0 <- c(S = mesocosm.transmission.CB.S[1, i + 1], D = 0)
+  sims <- sim_annealing.S(I = 10^4, tc = 10^8, tr = 20, data, times, N0)
+  pars.sim.CB[i,] <- sims$x
+}
+pars.sim.CB
+
+#Simulating data based on parms for Sim.Annealing
+sim.final <- array(NA, c(11,3,8), )
+for (i in 1:8) {
+  N0 <- c(S = mesocosm.transmission.CB.S[1, i + 1], D = 0)
+  sim.final[, , i] <-ode(y = N0, t = times, func = solve.Healthy.SA,
+                parms = list(as = pars.sim.CB[i,1], ms = pars.sim.CB[i,2]),
+                method = "ode45")[c(1,2,3,4,5,6,8,11,15,22,29),]
+}
+
+sim.final
+
+## Plotting CB data
+par(mfrow = c(1,1))
+  plot(mesocosm.transmission.CB.S[,2] ~ Day, data = mesocosm.transmission.CB.S, col = "green", ylim = c(0,9))
+for (i in 1:8) {
+  points(mesocosm.transmission.CB.S[,i+1] ~ Day, data = mesocosm.transmission.CB.S, col = "green") #Experiment susceptible
+  points(mesocosm.transmission.CB.S[,i+9] ~ Day, data = mesocosm.transmission.CB.S) #Experiment dead
+  points(sim.final[,2,i] ~ sim.final[,1,i], data = sim.final[,,i], t = "l", col = "green") #simulated susceptible
+  points(sim.final[,3,i] ~ sim.final[,1,i], data = sim.final[,,i], t = "l") #simulated dead
+}
+
+##LP
+pars.sim.LP <- matrix(NA, nrow = 11, ncol = 2)
+for (i in 1:11) {
+  data <- mesocosm.transmission.LP.S[, c(1,i + 1, i + 12)]
+  times <- 0:28
+  N0 <- c(S = mesocosm.transmission.LP.S[1, i + 1], D = 0)
+  sims <- sim_annealing.S(I = 10^4, tc = 10^8, tr = 20, data, times, N0)
+  pars.sim.LP[i,] <- sims$x
+}
+pars.sim.LP
+
+#Simulating data based on parms for Sim.Annealing
+sim.final <- array(NA, c(11,3,11), )
+for (i in 1:11) {
+  N0 <- c(S = mesocosm.transmission.LP.S[1, i + 1], D = 0)
+  sim.final[, , i] <-ode(y = N0, t = times, func = solve.Healthy.SA,
+                parms = list(as = pars.sim.LP[i,1], ms = pars.sim.LP[i,2]),
+                method = "ode45")[c(1,2,3,4,5,6,8,11,15,22,29),]
+}
+
+sim.final
+
+## Plotting LP data
+par(mfrow = c(1,1))
+  plot(mesocosm.transmission.LP.S[,2] ~ Day, data = mesocosm.transmission.LP.S, col = "green", ylim = c(0,9))
+for (i in 1:11) {
+  points(mesocosm.transmission.LP.S[,i+1] ~ Day, data = mesocosm.transmission.LP.S, col = "green") #Experiment susceptible
+  points(mesocosm.transmission.LP.S[,i+9] ~ Day, data = mesocosm.transmission.LP.S) #Experiment dead
+  points(sim.final[,2,i] ~ sim.final[,1,i], data = sim.final[,,i], t = "l", col = "green") #simulated susceptible
+  points(sim.final[,3,i] ~ sim.final[,1,i], data = sim.final[,,i], t = "l") #simulated dead
+}
+
+##NB
+pars.sim.NB <- matrix(NA, nrow = 11, ncol = 2)
+for (i in 1:11) {
+  data <- mesocosm.transmission.NB.S[, c(1,i + 1, i + 12)]
+  times <- 0:28
+  N0 <- c(S = mesocosm.transmission.NB.S[1, i + 1], D = 0)
+  sims <- sim_annealing.S(I = 10^4, tc = 10^8, tr = 20, data, times, N0)
+  pars.sim.NB[i,] <- sims$x
+}
+pars.sim.NB
+
+#Simulating data based on parms for Sim.Annealing
+sim.final <- array(NA, c(11,3,11), )
+for (i in 1:11) {
+  N0 <- c(S = mesocosm.transmission.NB.S[1, i + 1], D = 0)
+  sim.final[, , i] <-ode(y = N0, t = times, func = solve.Healthy.SA,
+                parms = list(as = pars.sim.NB[i,1], ms = pars.sim.NB[i,2]),
+                method = "ode45")[c(1,2,3,4,5,6,8,11,15,22,29),]
+}
+
+sim.final
+
+## Plotting NB data
+par(mfrow = c(1,1))
+  plot(mesocosm.transmission.NB.S[,2] ~ Day, data = mesocosm.transmission.NB.S, col = "green", ylim = c(0,9))
+for (i in 1:11) {
+  points(mesocosm.transmission.NB.S[,i+1] ~ Day, data = mesocosm.transmission.NB.S, col = "green") #Experiment susceptible
+  points(mesocosm.transmission.NB.S[,i+9] ~ Day, data = mesocosm.transmission.NB.S) #Experiment dead
+  points(sim.final[,2,i] ~ sim.final[,1,i], data = sim.final[,,i], t = "l", col = "green") #simulated susceptible
+  points(sim.final[,3,i] ~ sim.final[,1,i], data = sim.final[,,i], t = "l") #simulated dead
+}
+  
+##WB
+pars.sim.WB <- matrix(NA, nrow = 6, ncol = 2)
+for (i in 1:6) {
+  data <- mesocosm.transmission.WB.S[, c(1,i + 1, i + 7)]
+  times <- 0:28
+  N0 <- c(S = mesocosm.transmission.WB.S[1, i + 1], D = 0)
+  sims <- sim_annealing.S(I = 10^4, tc = 10^8, tr = 20, data, times, N0)
+  pars.sim.WB[i,] <- sims$x
+}
+pars.sim.WB
+
+mean(pars.sim.WB[,1])
+
+#Simulating data based on parms for Sim.Annealing
+sim.final <- array(NA, c(11,3,6), )
+for (i in 1:6) {
+  N0 <- c(S = mesocosm.transmission.WB.S[1, i + 1], D = 0)
+  sim.final[, , i] <-ode(y = N0, t = times, func = solve.Healthy.SA,
+                parms = list(as = pars.sim.WB[i,1], ms = pars.sim.WB[i,2]),
+                method = "ode45")[c(1,2,3,4,5,6,8,11,15,22,29),]
+}
+
+sim.final
+
+## Plotting WB data
+par(mfrow = c(1,1))
+  plot(mesocosm.transmission.WB.S[,2] ~ Day, data = mesocosm.transmission.WB.S, col = "green", ylim = c(0,9))
+for (i in 1:6) {
+  points(mesocosm.transmission.WB.S[,i+1] ~ Day, data = mesocosm.transmission.WB.S, col = "green") #Experiment susceptible
+  points(mesocosm.transmission.WB.S[,i+7] ~ Day, data = mesocosm.transmission.WB.S) #Experiment dead
+  points(sim.final[,2,i] ~ sim.final[,1,i], data = sim.final[,,i], t = "l", col = "green") #simulated susceptible
+  points(sim.final[,3,i] ~ sim.final[,1,i], data = sim.final[,,i], t = "l") #simulated dead
+}
+
+ ##Mean parameters by site 
+mean.as <-c(mean(pars.sim.CB[,1]), mean(pars.sim.LP[,1]), mean(pars.sim.NB[,1]), mean(pars.sim.WB[,1]))
+mean.as
+mean.ms <-c(mean(pars.sim.CB[,2]), mean(pars.sim.LP[,2]), mean(pars.sim.NB[,2]), mean(pars.sim.WB[,2]))
+mean.ms
+
+#calcualating virulence (disease induced mortality rate = mi-ms)
+pathogenicity.est <- rbind(c("CB", "LP", "NB", "WB"), c(0.098-0.041, 0.108-0.029, 0.089-0.019, 0.0603-0.0602))
+pathogenicity.est
+
+
+```
+
+##Sim.An.Stats
+```{r eval = FALSE}
+
+##Manipulating data:
+
+site.vector <- c("cb", "cb", "cb", "cb", "cb", "cb", "cb", "cb", "cb", "cb", "cb", "lp", "lp", "lp", "lp", "lp", "lp", "lp", "lp", "lp", "lp", "lp", "nb", "nb", "nb", "nb", "nb", "nb", "nb", "nb", "nb", "nb", "nb", "wb", "wb", "wb", "wb", "wb", "wb", "wb", "wb", "wb", "wb", "wb")
+SA.data.master <- matrix(site.vector, nrow = 44, ncol = 1)
+SA.data.master <- as.data.frame(SA.data.master)
+SA.data.master$ai <- matrix(rbind(pars.sim.master[, , 1], pars.sim.master[, , 2], pars.sim.master[, , 3], pars.sim.master[, , 4]), nrow = 44, ncol = 3)[,1]
+SA.data.master$beta <- matrix(rbind(pars.sim.master[, , 1], pars.sim.master[, , 2], pars.sim.master[, , 3], pars.sim.master[, , 4]), nrow = 44, ncol = 3)[,2]
+SA.data.master$mi <- matrix(rbind(pars.sim.master[, , 1], pars.sim.master[, , 2], pars.sim.master[, , 3], pars.sim.master[, , 4]), nrow = 44, ncol = 3)[,3]
+colnames(SA.data.master) <- c("site", "ai", "beta", "mi")
+
+SA.data.master$as <-c(pars.sim.CB[,1], NA, NA, NA, pars.sim.LP[,1], pars.sim.NB[,1], pars.sim.WB[,1], NA, NA, NA, NA, NA)
+SA.data.master$ms <- c(pars.sim.CB[,2], NA, NA, NA, pars.sim.LP[,2], pars.sim.NB[,2], pars.sim.WB[,2], NA, NA, NA, NA, NA)
+SA.data.master$patho <- SA.data.master$mi - SA.data.master$ms
+
+str(SA.data.master)
+
+##Healthy leaf production analyses (as)
+SA.as.model <- aov(as ~ site, data = SA.data.master)
+Anova(SA.as.model) ##No significant differences
+
+##Healthy leaf loss analyses (ms)
+SA.ms.model <-aov(ms ~ site, data = SA.data.master)
+Anova(SA.ms.model) #significant effect of site
+
+posthoc.SA.ms.model <- TukeyHSD(SA.ms.model)
+multcompLetters(posthoc.SA.ms.model$`site`[,"p adj"]) #nb = least, lp&cb = ND, wb = most
+
+##Infected leaf production analyses (ai)
+SA.ai.model <- aov(ai ~ site, data = SA.data.master)
+Anova(SA.ai.model) #No significant differences
+
+#Infected leaf loss analyses (mi)
+SA.mi.model <- aov(mi ~ site, data = SA.data.master)
+Anova(SA.mi.model) #No significant differences
+
+#Transmission analyses (beta)
+SA.beta.model <- aov(beta ~ site, data = SA.data.master)
+Anova(SA.beta.model) #Marginal difference
+  #CB (0.29), WB (0.54), LP (0.34) and NB (0.43)
+
+#Pathogenicity analyses (patho) ##ANCOVA
+SA.patho.model <- aov(patho ~ site, data = SA.data.master)
+Anova(SA.patho.model) #significant differences
+
+posthoc.SA.patho.model <- TukeyHSD(SA.patho.model)
+multcompLetters(posthoc.SA.patho.model$`site`[,"p adj"]) #wb = least, nb&cb = intermediate, lp = most
+
+```
 
 ##FIELD MODEL
-
+```{r eval = FALSE, echo = FALSE}
 # dS/dt = as * (S / (S + I)) * ((S + I) / LEAVES/PLANT) +
         # ai * (I / (S + I)) * ((S + I) / LEAVES/PLANT) - B * S * I -
         # ms * (S / (S + I)) * ((S + I) / LEAVES/PLANT)
 # dI/dt = B * S * I - mi * (I / (S + I)) * ((S + I) / LEAVES/PLANT)
 # dD/dt = ms * (S / (S + I)) * ((S + I) / LEAVES/PLANT) +
         # mi * (I / (S + I)) * ((S + I) / LEAVES/PLANT)
+
+
+##Function for field model
+solve.field <- function(t, y, parms) {
+  with(c(parms, y), {
+    y[y < 0] <- 0
+    dS <- as * (S / (S + I)) * ((S + I) / lpp) + ai * (I / (S + I)) * ((S + I) / lpp) - beta * S * I - ms * (S / (S + I)) * ((S + I) / lpp)
+    dI <- beta * S * I - mi * (I / (S + I)) * ((S + I) / lpp)
+    #dD <- ms * (S / (S + I)) * ((S + I) / lpp) + mi * (I / (S + I)) * ((S + I) / lpp)
+    return(list(c(dS, dI))) #dD
+  })
+}
+
+#parameters (DC, LP, NB, WB)
+as <- c(0.069, 0.076, 0.112, 0.090)
+ai <- c(0.066, 0.081, 0.076, 0.052)
+lpp <- c(4.143, 3.723, 3.698, 3.000)
+beta <- c(0.295*0.001, 0.341*0.001, 0.434*0.001, 0.547*0.001)
+ms <- c(0.042, 0.029, 0.019, 0.060)
+mi <- c(0.098, 0.108, 0.089, 0.060)
+
+#empty matrix
+r.T1 <- matrix(nrow = 10001, ncol = 3, 0)
+
+#time steps
+times <- seq(from = 0, to = 10000, len = 10001)
+
+#simulation (can adjust parameters for each site see oyster modeling project)
+r.T1 <- ode(time = times, parms = list(as = as[2], ai = ai[2], lpp = lpp[2], beta = beta[2], ms = ms[2], mi = mi[2]), y = c(S = 50, I = 1),  func = solve.field, method = "ode45")
+
+#for (n in 1:4) {
+  #r.T1[,1] <- ode(time = times, parms = list(as = as[1], ai = ai[1], lpp = lpp[1], beta = beta[1], ms = ms[1], mi = mi[1]), y = c(S = 750, I = 750),  func = solve.field, method = "ode45")[,1]
+  
+  #r.T1[,n+1] <- ode(time = times, parms = list(as = as[n], ai = ai[n], lpp = lpp[n], beta = beta[n], ms = ms[n], mi = mi[n]), y = c(S = 750, I = 750),  func = solve.field, method = "ode45")[,2]
+  
+  #r.T1[,n+5] <- ode(time = times, parms = list(as = as[n], ai = ai[n], lpp = lpp[n], beta = beta[n], ms = ms[n], mi = mi[n]), y = c(S = 750, I = 750),  func = solve.field, method = "ode45")[,3]
+  #}
+
+r.T1 <- data.frame(r.T1)
+
+r.T1[10001,2] + r.T1[10001,3] #Host pop. size: DC*1 = 147.84, DC*0.9 = 159.93, DC*1.1 = 145.18, DC*1.2 = 146.57
+                              #Host pop. size: LP*1 = 233.15, LP*0.9 = 298.69, LP*1.3 = 198.09, LP*1.4 = 198.84
+                              #Host pop. size: NB*1 = 452.16, NB*0.9 = 1181.9, NB*2.0 = 212.03, NB*2.1 = 214.11
+                              #Host pop. size: WB*1 = 173.67, WB*0.9 = 526.16, WB*1.5 = 98.14, WB*1.6 = 98.39
+
+r.T1[10001,3]/(r.T1[10001,2] + r.T1[10001,3]) #Prevalence: DC = 0.46, LP = 0.63, NB = 0.88, WB = 0.79
+
+prevalence <-c(r.T1[1001,6]/(r.T1[1001,2] + r.T1[1001,6]), r.T1[1001,7]/(r.T1[1001,3] + r.T1[1001,7]), r.T1[1001,8]/(r.T1[1001,4] + r.T1[1001,8]), r.T1[1001,9]/(r.T1[1001,5] + r.T1[1001,9]))
+prevalence
+
+#parameters (DC, LP, NB, WB)
+      ### ---> Simulation results aren't making a lot of sense (all becoming infected)?
+          ###Possible causes: (1) transmission rates are too high? (2) Infected mortality rates too low?
+      ###Decreased transmission rates at constant proportion until numbers match field densities-ish (??) keep relative diffs same
+
+
+      ###Develop for loop to solve for population size and prevalence at different pathogenicities
+          
+
+
 ```
+
 
 ##ABC (Approximate Bayesian Computation)
 ```{r eval = FALSE, echo = FALSE}
