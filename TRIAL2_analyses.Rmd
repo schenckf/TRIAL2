@@ -351,7 +351,11 @@ field.site.mean <- field.quad %>%
   summarize(lesion.present = sum(lesion.present), lesion.absent = sum(lesion.absent), p.mean = mean(prevalence, na.rm = T), p.se = se(prevalence, na.rm = T), length.mean = mean(canopy.height, na.rm = T), shoot.density.mean = mean(density, na.rm = T), leaf.density.mean = mean(leaf.density, na.rm =T))
 
 field.site.mean$leaf.loss <- c(2.18, 2.64, 1.82, 1.18)
-field.site.mean$transmission <- c(0.77, 0.97, 0.89, 0.81)
+field.site.mean$EWDSS <- c(0.77, 0.97, 0.89, 0.81)
+field.site.mean$WSWI <- c(45.49, 53.06, 61.57, 38.28)
+field.site.mean$site.cat <- c("bay", "fringe" , "fringe", "bay")
+field.site.mean$beta <- c(0.295, 0.341, 0.434, 0.547)
+field.site.mean$alpha <- c(0.057, 0.079, 0.070, 0.0001)
 
 ## Environmental Data
 #d1.env <- read.csv("LabyInoc_T2_ZM_ENV_23JAN2017.csv")
@@ -911,6 +915,10 @@ p <- ggplot(filter(mesocosm.lesions, vase != "22" & vase != "24"), aes(x = site,
   ylim(0,100) +
   theme_classic()
 p
+
+WSWI.mean <- mesocosm.lesions %>%
+  group_by(infection, site) %>%
+  summarize(WSWI.mean = mean(WSWI, na.rm = T), prop.inf.se = se(WSWI, na.rm = T))
 ```
 
 
@@ -991,9 +999,12 @@ p
 #leaf appearance by site
 la.model <- aov(exp.day.appeared ~ site, data = mesocosm.lesions)
 Anova(la.model)
+```
 
+###Adaptation to disease risk
+```{r eval = FALSE, echo = FALSE}
 ##Adaptation to disease risk
-m.ewdss.risk <- glm(cbind(lesion.presence, lesion.absence) ~ field.prevalence * infection + exp.day.appeared, family = binomial, data = filter(mesocosm.lesions))
+m.ewdss.risk <- glm(cbind(lesion.presence, lesion.absence) ~ field.prevalence * infection + exp.day.appeared, family = binomial, data = mesocosm.lesions)
 Anova(m.ewdss.risk, test = "LR")
 
 p <- ggplot(mesocosm.lesions, aes(x = field.prevalence, y = lesion.presence/(lesion.presence+lesion.absence), color = infection)) +
@@ -1006,6 +1017,7 @@ p <- ggplot(mesocosm.lesions, aes(x = field.prevalence, y = lesion.presence/(les
   xlim(0,1) +
   theme_classic()
 p
+
 
 ```
 
@@ -1384,14 +1396,18 @@ p <- ggplot(field.site.mean, aes(x = leaf.loss, y = prevalence)) +
   theme_classic()
 p
 
+##pathogenicity
+m.patho.p <- lm(p.mean ~ alpha, data = field.site.mean)
+Anova(m.patho.p)
+
 ## transmission
-m.t.p <- glm(cbind(lesion.present, lesion.absent) ~ transmission, family = binomial, data = field.site.mean)
+m.t.p <- glm(cbind(lesion.present, lesion.absent) ~ EWDSS, family = binomial, data = field.site.mean)
 Anova(m.t.p, test = "LR")
 
-m.t.p <- lm(p.mean ~ transmission, data = field.site.mean)
+m.t.p <- lm(p.mean ~ beta, data = field.site.mean)
 Anova(m.t.p)
 
-p <- ggplot(field.site.mean, aes(x = transmission, y = prevalence)) +
+p <- ggplot(field.site.mean, aes(x = alpha, y = p.mean)) +
   #scale_color_manual(values = c("gray40","gray60", "gray90", "black")) +
   geom_point() +
   geom_smooth(method = lm, se = F, fullrange = F, color = "black") +
@@ -1980,7 +1996,7 @@ SA.ms.model <-aov(ms ~ site, data = SA.data.master)
 Anova(SA.ms.model) #significant effect of site
 
 posthoc.SA.ms.model <- TukeyHSD(SA.ms.model)
-multcompLetters(posthoc.SA.ms.model$`site`[,"p adj"]) #nb = least, lp&cb = ND, wb = most
+multcompLetters(posthoc.SA.ms.model$`site`[,"p adj"]) #nb = least, lp&cb = intermediate, wb = most
 
 ##Infected leaf production analyses (ai)
 SA.ai.model <- aov(ai ~ site, data = SA.data.master)
@@ -2002,6 +2018,10 @@ Anova(SA.patho.model) #significant differences
 posthoc.SA.patho.model <- TukeyHSD(SA.patho.model)
 multcompLetters(posthoc.SA.patho.model$`site`[,"p adj"]) #wb = least, nb&cb = intermediate, lp = most
 
+SA.data.master.patho <- SA.data.master %>%
+  group_by(site) %>%
+  summarize(patho.mean = mean(patho, na.rm = T), patho.se = se(patho, na.rm = T), patho.sd = sd(patho, na.rm = T))
+
 ```
 
 ##FIELD MODEL
@@ -2019,8 +2039,8 @@ solve.field <- function(t, y, parms) {
   with(c(parms, y), {
     y[y < 0] <- 0
     dS <- as * (S / (S + I)) * ((S + I) / lpp) + ai * (I / (S + I)) * ((S + I) / lpp) - beta * S * I - ms * (S / (S + I)) * ((S + I) / lpp)
-    dI <- beta * S * I - mi * (I / (S + I)) * ((S + I) / lpp)
-    #dD <- ms * (S / (S + I)) * ((S + I) / lpp) + mi * (I / (S + I)) * ((S + I) / lpp)
+    dI <- beta * S * I - (ms + alpha) * (I / (S + I)) * ((S + I) / lpp)
+    #dD <- ms * (S / (S + I)) * ((S + I) / lpp) + (ms + alpha) * (I / (S + I)) * ((S + I) / lpp)
     return(list(c(dS, dI))) #dD
   })
 }
@@ -2029,26 +2049,154 @@ solve.field <- function(t, y, parms) {
 as <- c(0.069, 0.076, 0.112, 0.090)
 ai <- c(0.066, 0.081, 0.076, 0.052)
 lpp <- c(4.143, 3.723, 3.698, 3.000)
-beta <- c(0.295*0.001, 0.341*0.001, 0.434*0.001, 0.547*0.001)
+beta <- c(0.295*0.001, 0.341*0.001, 0.434*0.001, 0.547*0.001)      #beta <- c(0.295, 0.341, 0.434, 0.547) --> Ran test to check changing order of magnitude of transmission rates does not affect interpretation = OK :) !!
 ms <- c(0.042, 0.029, 0.019, 0.060)
-mi <- c(0.098, 0.108, 0.089, 0.060)
+alpha <- c(0.057, 0.079, 0.070, 0.0001)
 
-#empty matrix
-r.T1 <- matrix(nrow = 10001, ncol = 3, 0)
+#CB
+alpha.mod <- seq(from = 0.5, to = 3, len = 251)  #alpha.mod <- seq(from = 0.5, to = 3, len = 6)
 
-#time steps
+  #empty matrix
+field.sim.CB <- matrix(nrow = 251, ncol = 4, 0)    #field.sim.CB.test <- matrix(nrow = 6, ncol = 4, 0)
+
+  #time steps
 times <- seq(from = 0, to = 10000, len = 10001)
 
-#simulation (can adjust parameters for each site see oyster modeling project)
-r.T1 <- ode(time = times, parms = list(as = as[2], ai = ai[2], lpp = lpp[2], beta = beta[2], ms = ms[2], mi = mi[2]), y = c(S = 50, I = 1),  func = solve.field, method = "ode45")
+  #simulation
+for (i in 1:251) {
+  field.sim.CB[i, 1] <- alpha[1] * alpha.mod[i]
+  field.sim.CB[i, 2:4] <- ode(time = times, parms = list(as = as[1], ai = ai[1], lpp = lpp[1], beta = beta[1], ms = ms[1], alpha = field.sim.CB[i, 1]), y = c(S = 50, I = 1),  func = solve.field, method = "ode45")[10001,]
+}
 
-#for (n in 1:4) {
-  #r.T1[,1] <- ode(time = times, parms = list(as = as[1], ai = ai[1], lpp = lpp[1], beta = beta[1], ms = ms[1], mi = mi[1]), y = c(S = 750, I = 750),  func = solve.field, method = "ode45")[,1]
-  
-  #r.T1[,n+1] <- ode(time = times, parms = list(as = as[n], ai = ai[n], lpp = lpp[n], beta = beta[n], ms = ms[n], mi = mi[n]), y = c(S = 750, I = 750),  func = solve.field, method = "ode45")[,2]
-  
-  #r.T1[,n+5] <- ode(time = times, parms = list(as = as[n], ai = ai[n], lpp = lpp[n], beta = beta[n], ms = ms[n], mi = mi[n]), y = c(S = 750, I = 750),  func = solve.field, method = "ode45")[,3]
-  #}
+  #Post sim H* and y* calcs
+field.sim.CB <- as.data.frame(field.sim.CB)    #field.sim.CB.test <- as.data.frame(field.sim.CB.test)
+colnames(field.sim.CB)[1:4] <- c("alpha", "time.step", "S", "I") #colnames(field.sim.CB.test)[1:4] <- c("alpha", "time.step", "S", "I")
+field.sim.CB$H <- field.sim.CB$S + field.sim.CB$I   #field.sim.CB.test$H <- field.sim.CB.test$S + field.sim.CB.test$I
+field.sim.CB$y <- field.sim.CB$I / (field.sim.CB$S + field.sim.CB$I)  #field.sim.CB.test$y <- field.sim.CB.test$I / (field.sim.CB.test$S + field.sim.CB.test$I)
+field.sim.CB$alpha.mod <- alpha.mod    #field.sim.CB.test$alpha.mod <- alpha.mod
+
+
+  #plots
+par(mfrow = c(1,2))
+plot(H ~ alpha, data = field.sim.CB, ylim = c(0,500), xlim = c(0,0.2), ylab = "H*", t = "l")
+points(H[51] ~ alpha[51], data = field.sim.CB, pch = 1, col = "red") #measured alpha
+points(H[23] ~ alpha[23], data = field.sim.CB, pch = 0, col = "green") #field y* alpha
+points(H[67] ~ alpha[67], data = field.sim.CB, pch = 8, col = "orange") #min H* alpha
+arrows(0.057+0.019, 147.27, 0.057-0.019, 147.27, length = 0.05, angle = 90, code = 3, col = "red")
+plot(y ~ alpha, data = field.sim.CB, ylim = c(0,1), xlim = c(0,0.2), ylab = "y*", t = "l")
+points(y[51] ~ alpha[51], data = field.sim.CB, pch = 1, col = "red")
+points(y[23] ~ alpha[23], data = field.sim.CB, pch = 0, col = "green")
+points(y[67] ~ alpha[67], data = field.sim.CB, pch = 8, col = "orange")
+arrows(0.057+0.019, 0.45, 0.057-0.019, 0.45, length = 0.05, angle = 90, code = 3, col = "red")
+
+
+#LP
+alpha.mod <- seq(from = 0.7, to = 2.7, len = 201)
+
+  #empty matrix
+field.sim.LP <- matrix(nrow = 201, ncol = 4, 0)
+
+  #time steps
+times <- seq(from = 0, to = 10000, len = 10001)
+
+  #simulation
+for (i in 1:201) {
+  field.sim.LP[i, 1] <- alpha[2] * alpha.mod[i]
+  field.sim.LP[i, 2:4] <- ode(time = times, parms = list(as = as[2], ai = ai[2], lpp = lpp[2], beta = beta[2], ms = ms[2], alpha = field.sim.LP[i, 1]), y = c(S = 50, I = 1),  func = solve.field, method = "ode45")[10001,]
+}
+
+  #Post sim H* and y* calcs
+field.sim.LP <- as.data.frame(field.sim.LP)
+colnames(field.sim.LP)[1:4] <- c("alpha", "time.step", "S", "I")
+field.sim.LP$H <- field.sim.LP$S + field.sim.LP$I
+field.sim.LP$y <- field.sim.LP$I / (field.sim.LP$S + field.sim.LP$I)
+field.sim.LP$alpha.mod <- alpha.mod
+
+
+  #plots
+par(mfrow = c(1,2))
+plot(H ~ alpha, data = field.sim.LP, ylim = c(0,1200), xlim = c(0,0.25), ylab = "H*", t = "l")
+points(H[31] ~ alpha[31], data = field.sim.LP, pch = 1, col = "red") #measured alpha
+points(H[142] ~ alpha[142], data = field.sim.LP, pch = 0, col = "green") #field y* alpha
+points(H[75] ~ alpha[75], data = field.sim.LP, pch = 8, col = "orange") #min H* alpha
+arrows(0.079+0.016, 233.16, 0.079-0.016, 233.16, length = 0.05, angle = 90, code = 3, col = "red")
+plot(y ~ alpha, data = field.sim.LP, ylim = c(0,1), xlim = c(0,0.25), ylab = "y*", t = "l")
+points(y[31] ~ alpha[31], data = field.sim.LP, pch = 1, col = "red")
+points(y[142] ~ alpha[142], data = field.sim.LP, pch = 0, col = "green")
+points(y[75] ~ alpha[75], data = field.sim.LP, pch = 8, col = "orange")
+arrows(0.079+0.016, 0.635, 0.079-0.016, 0.635, length = 0.05, angle = 90, code = 3, col = "red")
+
+#NB
+alpha.mod <- seq(from = 0.9, to = 3, len = 211)
+
+  #empty matrix
+field.sim.NB <- matrix(nrow = 211, ncol = 4, 0)
+
+  #time steps
+times <- seq(from = 0, to = 10000, len = 10001)
+
+  #simulation
+for (i in 1:211) {
+  field.sim.NB[i, 1] <- alpha[3] * alpha.mod[i]
+  field.sim.NB[i, 2:4] <- ode(time = times, parms = list(as = as[3], ai = ai[3], lpp = lpp[3], beta = beta[3], ms = ms[3], alpha = field.sim.NB[i, 1]), y = c(S = 50, I = 1),  func = solve.field, method = "ode45")[10001,]
+}
+
+  #Post sim H* and y* calcs
+field.sim.NB <- as.data.frame(field.sim.NB)
+colnames(field.sim.NB)[1:4] <- c("alpha", "time.step", "S", "I")
+field.sim.NB$H <- field.sim.NB$S + field.sim.NB$I
+field.sim.NB$y <- field.sim.NB$I / (field.sim.NB$S + field.sim.NB$I)
+field.sim.NB$alpha.mod <- alpha.mod
+
+
+  #plots
+par(mfrow = c(1,2))
+plot(H ~ alpha, data = field.sim.NB, ylim = c(0,1000), xlim = c(0,0.25), ylab = "H*", t = "l")
+points(H[11] ~ alpha[11], data = field.sim.NB, pch = 1, col = "red") #measured alpha
+points(H[142] ~ alpha[142], data = field.sim.NB, pch = 0, col = "green") #field y* alpha
+points(H[113] ~ alpha[113], data = field.sim.NB, pch = 8, col = "orange") #min H* alpha
+arrows(0.070+0.015, 452.16, 0.070-0.015, 452.16, length = 0.05, angle = 90, code = 3, col = "red")
+plot(y ~ alpha, data = field.sim.NB, ylim = c(0,1), xlim = c(0,0.25), ylab = "y*", t = "l")
+points(y[11] ~ alpha[11], data = field.sim.NB, pch = 1, col = "red")
+points(y[142] ~ alpha[142], data = field.sim.NB, pch = 0, col = "green")
+points(y[113] ~ alpha[113], data = field.sim.NB, pch = 8, col = "orange")
+arrows(0.070+0.015, 0.877, 0.070-0.015, 0.877, length = 0.05, angle = 90, code = 3, col = "red")
+
+#WB
+alpha.mod <- c(0,1, seq(from = 5, to = 1000, len = 200))
+
+  #empty matrix
+field.sim.WB <- matrix(nrow = 202, ncol = 4, 0)
+
+  #time steps
+times <- seq(from = 0, to = 10000, len = 10001)
+
+  #simulation
+for (i in 1:202) {
+  field.sim.WB[i, 1] <- alpha[4] * alpha.mod[i]
+  field.sim.WB[i, 2:4] <- ode(time = times, parms = list(as = as[4], ai = ai[4], lpp = lpp[4], beta = beta[4], ms = ms[4], alpha = field.sim.WB[i, 1]), y = c(S = 50, I = 1),  func = solve.field, method = "ode45")[10001,]
+}
+
+  #Post sim H* and y* calcs
+field.sim.WB <- as.data.frame(field.sim.WB)
+colnames(field.sim.WB)[1:4] <- c("alpha", "time.step", "S", "I")
+field.sim.WB$H <- field.sim.WB$S + field.sim.WB$I
+field.sim.WB$y <- field.sim.WB$I / (field.sim.WB$S + field.sim.WB$I)
+field.sim.WB$alpha.mod <- alpha.mod
+
+
+  #plots
+par(mfrow = c(1,2))
+plot(H ~ alpha, data = field.sim.WB, ylim = c(0,200), xlim = c(-0.05,0.15), ylab = "H*", t = "l")
+points(H[2] ~ alpha[2], data = field.sim.WB, pch = 1, col = "red") #measured alpha
+points(H[13] ~ alpha[13], data = field.sim.WB, pch = 0, col = "green") #field y* alpha
+points(H[65] ~ alpha[65], data = field.sim.WB, pch = 8, col = "orange") #min H* alpha
+arrows(0.0001+0.033, 172.27, 0.0001-0.033, 172.27, length = 0.05, angle = 90, code = 3, col = "red")
+plot(y ~ alpha, data = field.sim.WB, ylim = c(0,1), xlim = c(-0.05,0.15), ylab = "y*", t = "l")
+points(y[2] ~ alpha[2], data = field.sim.WB, pch = 1, col = "red")
+points(y[13] ~ alpha[13], data = field.sim.WB, pch = 0, col = "green")
+points(y[65] ~ alpha[65], data = field.sim.WB, pch = 8, col = "orange")
+arrows(0.0001+0.033, 0.79, 0.0001-0.033, 0.79, length = 0.05, angle = 90, code = 3, col = "red")
 
 r.T1 <- data.frame(r.T1)
 
@@ -2064,7 +2212,7 @@ prevalence
 
 #parameters (DC, LP, NB, WB)
       ### ---> Simulation results aren't making a lot of sense (all becoming infected)?
-          ###Possible causes: (1) transmission rates are too high? (2) Infected mortality rates too low?
+          ###Possible causes: (1) transmission rates are too high? (2) Infected mortality rates too low? (3) Leaf production rates low
       ###Decreased transmission rates at constant proportion until numbers match field densities-ish (??) keep relative diffs same
 
 
