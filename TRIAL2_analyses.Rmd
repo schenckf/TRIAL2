@@ -433,7 +433,7 @@ p <- ggplot(filter(mesocosm.shoot, vase != 17 & vase != 21 & vase != 27 & vase !
 p
 
 ##NEED To sort out THIS ANALYSIS !! ... marginal effect of site
-m.new.shoots <- aov(shoot.production ~ site * infection + mesocosm, data = filter(mesocosm.shoot, vase != 17 & vase != 21 & vase != 27 & vase != 29 & vase != 37 & vase != 47 & vase != 59))
+m.new.shoots <- aov(shoot.production ~ site * infection + mesocosm, data = filter(mesocosm.shoot, vase != 17 & vase != 21 & vase != 27 & vase != 29 & vase != 37 & vase != 47 & vase != 59 & vase != 81))
 Anova(m.new.shoots)
 
 posthoc.new.shoots <- TukeyHSD(m.new.shoots)
@@ -510,7 +510,7 @@ p <- ggplot(mesocosm.shoot, aes(x = infection, y = no.leaves.new.final)) +
   theme_classic()
 p
 
-m.new.leaves <- aov(no.leaves.new.final ~ site*infection + mesocosm + no.leaves.initial, data = filter(mesocosm.shoot, vase != 17 & vase != 21 & vase != 27 & vase != 29 & vase != 37 & vase != 47 & vase != 59))
+m.new.leaves <- aov(no.leaves.new.final ~ site*infection + mesocosm + no.leaves.initial, data = filter(mesocosm.shoot, vase != 17 & vase != 21 & vase != 27 & vase != 29 & vase != 37 & vase != 47 & vase != 59 & vase != 81))
 Anova(m.new.leaves) #significant effect of infection (# of leaves intitial included as a covariate but not significant so removed)
 shapiro.test(residuals(m.new.leaves)) #passed
 leveneTest(m.new.leaves) #passed
@@ -557,7 +557,7 @@ p <- ggplot(filter(mesocosm.shoot, vase != 17 & vase != 21 & vase != 27 & vase !
   theme_classic()
 p
 
-m.lost.leaves <- aov(no.leaves.lost.final ~ site*infection + mesocosm + no.leaves.initial, data = filter(mesocosm.shoot,vase != 17 & vase != 21 & vase != 27 & vase != 29 & vase != 37 & vase != 47 & vase != 59))
+m.lost.leaves <- aov(no.leaves.lost.final ~ site*infection + mesocosm + no.leaves.initial, data = filter(mesocosm.shoot,vase != 17 & vase != 21 & vase != 27 & vase != 29 & vase != 37 & vase != 47 & vase != 59 & vase != 81))
 Anova(m.lost.leaves) #significant effect of infection*site (# of leaves intitial included as a covariate)
 shapiro.test(residuals(m.lost.leaves)) #pass
 leveneTest(m.lost.leaves) #pass
@@ -618,7 +618,7 @@ p
 
 ##leaf growth
 ```{r eval = FALSE, echo = FALSE}
-p <- ggplot(filter(mesocosm.growth, vase != 17 & vase != 21 & vase != 27 & vase != 29 & vase != 37 & vase != 47 & vase != 59), aes(x = site, y = leaf1.growth)) + 
+p <- ggplot(filter(mesocosm.growth, vase != 17 & vase != 21 & vase != 27 & vase != 29 & vase != 37 & vase != 47 & vase != 59 & vase != 81), aes(x = site, y = leaf1.growth)) + 
   #scale_fill_manual(values = c("white", "gray")) +
   geom_violin(position = position_dodge(1)) +
   geom_dotplot(binaxis = 'y', stackdir = 'center', position = position_dodge(1), dotsize  = 0.5) +
@@ -635,7 +635,7 @@ p <- ggplot(filter(mesocosm.growth, vase != 17 & vase != 21 & vase != 27 & vase 
   theme_classic()
 p
 
-m.leaf1.growth <- aov(leaf1.growth ~ site*infection + mesocosm + initial.length.cm, data = filter(mesocosm.growth, vase != 17 & vase != 21 & vase != 27 & vase != 29 & vase != 37 & vase != 47 & vase != 59))
+m.leaf1.growth <- aov(leaf1.growth ~ site*infection + mesocosm + initial.length.cm, data = filter(mesocosm.growth, vase != 17 & vase != 21 & vase != 27 & vase != 29 & vase != 37 & vase != 47 & vase != 59 & vase != 81))
 Anova(m.leaf1.growth) #significant effect of infection (# of leaves intitial included as a covariate)
 shapiro.test(residuals(m.leaf1.growth)) #pass
 leveneTest(m.leaf1.growth) # pass, without mesocosm or initial length in model
@@ -651,7 +651,7 @@ anova(m.leaf1.growth)
 
 #Summary statistics
 leaf1.growth.means <- mesocosm.growth %>%
-  filter(vase != 17 & vase != 21 & vase != 27 & vase != 29 & vase != 37 & vase != 47 & vase != 59) %>%
+  filter(vase != 17 & vase != 21 & vase != 27 & vase != 29 & vase != 37 & vase != 47 & vase != 59 & vase != 81) %>%
   group_by(infection) %>%
   summarize(mean.leaf1.growth = mean(leaf1.growth, na.rm = T), SE.leaf1.growth = se(leaf1.growth, na.rm = T))
 ```
@@ -676,7 +676,7 @@ p <- ggplot(filter(mesocosm.shoot,vase != 17 & vase != 21 & vase != 27 & vase !=
   theme_classic()
 p
 
-m.ag.biomass <- aov(ag.biomass.final ~ site*infection + mesocosm, data = filter(mesocosm.shoot,vase != 17 & vase != 21 & vase != 27 & vase != 29 & vase != 37 & vase != 47 & vase != 59))
+m.ag.biomass <- aov(ag.biomass.final ~ site*infection + mesocosm, data = filter(mesocosm.shoot,vase != 17 & vase != 21 & vase != 27 & vase != 29 & vase != 37 & vase != 47 & vase != 59 & vase != 81))
 Anova(m.ag.biomass) #significant effect of infection (# of leaves intitial included as a covariate)
 shapiro.test(residuals(m.ag.biomass)) #pass
 leveneTest(m.ag.biomass) #pass run on model without mesocosm
@@ -722,7 +722,7 @@ p <- ggplot(filter(mesocosm.shoot, vase != 17 & vase != 21 & vase != 27 & vase !
   theme_classic()
 p
 
-m.bg.biomass <- aov(bg.biomass.final ~ site*infection + mesocosm, data = filter(mesocosm.shoot,vase != 17 & vase != 21 & vase != 27 & vase != 29 & vase != 37 & vase != 47 & vase != 59))
+m.bg.biomass <- aov(bg.biomass.final ~ site*infection + mesocosm, data = filter(mesocosm.shoot,vase != 17 & vase != 21 & vase != 27 & vase != 29 & vase != 37 & vase != 47 & vase != 59 & vase != 81))
 Anova(m.bg.biomass) #significant effect of infection and site
 shapiro.test(residuals(m.bg.biomass)) #pass
 leveneTest(m.bg.biomass) #pass run on model without mesocosm
@@ -759,7 +759,7 @@ p <- ggplot(filter(mesocosm.shoot,vase != 17 & vase != 21 & vase != 27 & vase !=
   theme_classic()
 p
 
-m.rhizome.growth <- aov(rhizome.growth ~ site*infection + mesocosm, data = filter(mesocosm.shoot, vase != 17 & vase != 21 & vase != 27 & vase != 29 & vase != 37 & vase != 47 & vase != 59))
+m.rhizome.growth <- aov(rhizome.growth ~ site*infection + mesocosm, data = filter(mesocosm.shoot, vase != 17 & vase != 21 & vase != 27 & vase != 29 & vase != 37 & vase != 47 & vase != 59 & vase != 81))
 Anova(m.rhizome.growth) #significant interaction of infection and site
 shapiro.test(residuals(m.rhizome.growth)) #pass
 leveneTest(m.rhizome.growth) #pass, run on model without mesocosm
@@ -1998,6 +1998,10 @@ Anova(SA.ms.model) #significant effect of site
 posthoc.SA.ms.model <- TukeyHSD(SA.ms.model)
 multcompLetters(posthoc.SA.ms.model$`site`[,"p adj"]) #nb = least, lp&cb = intermediate, wb = most
 
+SA.data.master.ms <- SA.data.master %>%
+  group_by(site) %>%
+  summarize(ms.mean = mean(ms, na.rm = T), ms.se = se(ms, na.rm = T), ms.sd = sd(ms, na.rm = T))
+
 ##Infected leaf production analyses (ai)
 SA.ai.model <- aov(ai ~ site, data = SA.data.master)
 Anova(SA.ai.model) #No significant differences
@@ -2010,6 +2014,10 @@ Anova(SA.mi.model) #No significant differences
 SA.beta.model <- aov(beta ~ site, data = SA.data.master)
 Anova(SA.beta.model) #Marginal difference
   #CB (0.29), WB (0.54), LP (0.34) and NB (0.43)
+
+SA.data.master.beta <- SA.data.master %>%
+  group_by(site) %>%
+  summarize(beta.mean = mean(beta, na.rm = T), beta.se = se(beta, na.rm = T), beta.sd = sd(beta, na.rm = T))
 
 #Pathogenicity analyses (patho) ##ANCOVA
 SA.patho.model <- aov(patho ~ site, data = SA.data.master)
